@@ -56,6 +56,8 @@ try_tmux_command() {
 
 # Find delimiter in buffer, handling tmux line wrapping
 # Returns position via global variables: DELIM_START, DELIM_END
+# Note: This function is currently unused but kept for potential future use with line wrapping
+# shellcheck disable=SC2317
 find_delimiter_with_wrapping() {
     local buffer="$1"
     local delimiter="$2"
@@ -66,9 +68,10 @@ find_delimiter_with_wrapping() {
     # First try exact match (fast path)
     # Look for delimiter at start of line using grep with line numbers
     if echo "$buffer" | grep -n "^${delimiter}$" | tail -1 | grep -q .; then
-        local line_num=$(echo "$buffer" | grep -n "^${delimiter}$" | tail -1 | cut -d: -f1)
+        local line_num
+        line_num=$(echo "$buffer" | grep -n "^${delimiter}$" | tail -1 | cut -d: -f1)
         # Calculate byte position
-        DELIM_START=$(echo "$buffer" | head -n $((line_num - 1)) | wc -c)
+        DELIM_START=$(echo "$buffer" | head -n "$((line_num - 1))" | wc -c)
         DELIM_END=$((DELIM_START + ${#delimiter}))
         return 0
     fi
@@ -80,18 +83,23 @@ find_delimiter_with_wrapping() {
     for ((i=0; i<${#delimiter}; i++)); do
         local char="${delimiter:$i:1}"
         # Escape special regex characters
+        # SC1003: backslash is intentional for regex escaping
+        # shellcheck disable=SC1003
         case "$char" in
-            '.'|'*'|'['|']'|'^'|'$'|'\'|'/') char="\\$char" ;;
+            '.'|'*'|'['|']'|'^'|'$'|'\\'|'/') char="\\$char" ;;
         esac
         pattern="${pattern}${char}(\n ?)?"
     done
 
     # Try to find the pattern in the buffer
     # This is approximate - we'll find the last occurrence
-    local found_at=$(echo "$buffer" | grep -boP "$pattern" 2>/dev/null | tail -1 | cut -d: -f1 || echo "")
+    local found_at
+    found_at=$(echo "$buffer" | grep -boP "$pattern" 2>/dev/null | tail -1 | cut -d: -f1 || echo "")
 
     if [[ -n "$found_at" ]]; then
         DELIM_START=$found_at
+        # SC2034: DELIM_END is used externally via global variable
+        # shellcheck disable=SC2034
         DELIM_END=$((found_at + ${#delimiter}))
         return 0
     fi
@@ -119,12 +127,12 @@ if [[ -n "${SOCKET_PATH:-}" ]]; then
 fi
 
 # Get the current session name or use the first available session
-socket_arg=""
+socket_args=()
 if [[ -n "${SOCKET_PATH:-}" ]]; then
-    socket_arg="-S $SOCKET_PATH"
+    socket_args=(-S "$SOCKET_PATH")
 fi
 
-if ! session_list=$(tmux $socket_arg list-sessions 2>&1); then
+if ! session_list=$(tmux "${socket_args[@]}" list-sessions 2>&1); then
     socket_msg="using default tmux session"
     [[ -n "${SOCKET_PATH:-}" ]] && socket_msg="on socket $SOCKET_PATH"
     echo "Error: Cannot list tmux sessions $socket_msg" >&2
@@ -327,4 +335,4 @@ else
     echo "To close it manually, run: $close_cmd"
 fi
 
-exit $exit_code
+exit "$exit_code"
