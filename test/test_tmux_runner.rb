@@ -88,15 +88,21 @@ class TestTmuxRunner < Test::Unit::TestCase
     captured_output = nil
     captured_exit_code = nil
 
-    @runner.run_with_block("echo 'block test'") do |output, exit_code|
+    result = @runner.run_with_block("echo 'block test'") do |output, exit_code|
       called = true
       captured_output = output
       captured_exit_code = exit_code
     end
 
+    # Verify block was called with correct parameters
     assert_equal true, called
     assert_match /block test/, captured_output
     assert_equal 0, captured_exit_code
+
+    # Verify method also returns the result hash
+    assert_equal true, result[:success]
+    assert_match /block test/, result[:output]
+    assert_equal 0, result[:exit_code]
   end
 
   # Concurrent execution tests
@@ -265,12 +271,15 @@ class TestTmuxRunner < Test::Unit::TestCase
   def test_custom_window_prefix_with_block
     called = false
 
-    @runner.run_with_block("echo 'block prefix'", window_prefix: 'testblock') do |output, exit_code|
+    result = @runner.run_with_block("echo 'block prefix'", window_prefix: 'testblock') do |output, exit_code|
       called = true
       assert_match /block prefix/, output
+      assert_equal 0, exit_code
     end
 
     assert_equal true, called
+    assert_equal true, result[:success]
+    assert_match /block prefix/, result[:output]
   end
 
   def test_default_window_prefix
