@@ -11,17 +11,27 @@ class TmuxRunner
   # Initialize TmuxRunner
   # @param socket_path [String, nil] Path to tmux socket. Use '/tmp/shared-session' (default) for shared socket,
   #                                   or nil to use the current tmux session (no -S flag)
-  # @param script_path [String] Path to the tmux_runner.rb standalone script
-  def initialize(socket_path: '/tmp/shared-session', script_path: File.join(File.dirname(__FILE__), 'tmux_runner.rb'))
+  # @param script_path [String] Path to the tmux_runner script (defaults to bash version, falls back to Ruby)
+  def initialize(socket_path: '/tmp/shared-session', script_path: nil)
     @socket_path = socket_path
-    @script_path = script_path
     @last_exit_code = nil
     @last_output = nil
     @jobs = {}
     @jobs_mutex = Mutex.new
 
+    # Auto-detect script path - prefer bash version
+    if script_path
+      @script_path = script_path
+    elsif File.exist?(File.join(File.dirname(__FILE__), 'tmux_runner.sh'))
+      @script_path = File.join(File.dirname(__FILE__), 'tmux_runner.sh')
+    elsif File.exist?(File.join(File.dirname(__FILE__), 'tmux_runner.rb'))
+      @script_path = File.join(File.dirname(__FILE__), 'tmux_runner.rb')
+    else
+      raise "Cannot find tmux_runner script (tried .sh and .rb)"
+    end
+
     unless File.exist?(@script_path)
-      raise "Cannot find tmux_runner.rb script at #{@script_path}"
+      raise "Cannot find tmux_runner script at #{@script_path}"
     end
   end
 
@@ -37,7 +47,10 @@ class TmuxRunner
     else
       env_vars += " TMUX_SOCKET_PATH=''"
     end
-    full_output = `#{env_vars} ruby #{Shellwords.escape(@script_path)} #{Shellwords.escape(command)} 2>&1`
+
+    # Determine how to run the script based on its extension
+    script_runner = @script_path.end_with?('.sh') ? '' : 'ruby '
+    full_output = `#{env_vars} #{script_runner}#{Shellwords.escape(@script_path)} #{Shellwords.escape(command)} 2>&1`
 
     # Parse the output to extract command output and exit code
     result = parse_output(full_output)
