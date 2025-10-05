@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
+# frozen_string_literal: true
 
-require 'shellwords'
-require 'thread'
+require "shellwords"
 
 # TmuxRunner - Run commands in tmux windows and capture output
 # This is a library wrapper around the tmux_runner.rb standalone script
@@ -12,7 +12,7 @@ class TmuxRunner
   # @param socket_path [String, nil] Path to tmux socket. Use '/tmp/shared-session' (default) for shared socket,
   #                                   or nil to use the current tmux session (no -S flag)
   # @param script_path [String] Path to the tmux_runner script (defaults to bash version, falls back to Ruby)
-  def initialize(socket_path: '/tmp/shared-session', script_path: nil)
+  def initialize(socket_path: "/tmp/shared-session", script_path: nil)
     @socket_path = socket_path
     @last_exit_code = nil
     @last_output = nil
@@ -22,34 +22,34 @@ class TmuxRunner
     # Auto-detect script path - prefer bash version
     if script_path
       @script_path = script_path
-    elsif File.exist?(File.join(File.dirname(__FILE__), 'tmux_runner.sh'))
-      @script_path = File.join(File.dirname(__FILE__), 'tmux_runner.sh')
-    elsif File.exist?(File.join(File.dirname(__FILE__), 'tmux_runner.rb'))
-      @script_path = File.join(File.dirname(__FILE__), 'tmux_runner.rb')
+    elsif File.exist?(File.join(File.dirname(__FILE__), "tmux_runner.sh"))
+      @script_path = File.join(File.dirname(__FILE__), "tmux_runner.sh")
+    elsif File.exist?(File.join(File.dirname(__FILE__), "tmux_runner.rb"))
+      @script_path = File.join(File.dirname(__FILE__), "tmux_runner.rb")
     else
       raise "Cannot find tmux_runner script (tried .sh and .rb)"
     end
 
-    unless File.exist?(@script_path)
-      raise "Cannot find tmux_runner script at #{@script_path}"
-    end
+    return if File.exist?(@script_path)
+
+    raise "Cannot find tmux_runner script at #{@script_path}"
   end
 
   # Run a command and return a result hash (blocking)
   # Returns: { success: true/false, output: "...", exit_code: 0, error: nil }
-  def run(command, window_prefix: 'tmux_runner')
+  def run(command, window_prefix: "tmux_runner")
     # Run the standalone script and capture output
     env_vars = "TMUX_WINDOW_PREFIX=#{Shellwords.escape(window_prefix)}"
     # Only set TMUX_SOCKET_PATH if socket_path is non-nil
     # If nil, the script will use default tmux behavior (no -S flag)
-    if @socket_path
-      env_vars += " TMUX_SOCKET_PATH=#{Shellwords.escape(@socket_path)}"
-    else
-      env_vars += " TMUX_SOCKET_PATH=''"
-    end
+    env_vars += if @socket_path
+                  " TMUX_SOCKET_PATH=#{Shellwords.escape(@socket_path)}"
+                else
+                  " TMUX_SOCKET_PATH=''"
+                end
 
     # Determine how to run the script based on its extension
-    script_runner = @script_path.end_with?('.sh') ? '' : 'ruby '
+    script_runner = @script_path.end_with?(".sh") ? "" : "ruby "
     full_output = `#{env_vars} #{script_runner}#{Shellwords.escape(@script_path)} #{Shellwords.escape(command)} 2>&1`
 
     # Parse the output to extract command output and exit code
@@ -63,27 +63,25 @@ class TmuxRunner
 
   # Start a command asynchronously and return a job handle
   # Returns: job_id (String)
-  def start(command, window_prefix: 'tmux_runner')
+  def start(command, window_prefix: "tmux_runner")
     job_id = generate_job_id
 
     thread = Thread.new do
-      begin
-        result = run(command, window_prefix: window_prefix)
-        @jobs_mutex.synchronize do
-          @jobs[job_id][:result] = result
-          @jobs[job_id][:status] = :completed
-        end
-      rescue => e
-        @jobs_mutex.synchronize do
-          @jobs[job_id][:result] = {
-            success: false,
-            output: "",
-            exit_code: -1,
-            error: e.message
-          }
-          @jobs[job_id][:status] = :failed
-          @jobs[job_id][:exception] = e
-        end
+      result = run(command, window_prefix: window_prefix)
+      @jobs_mutex.synchronize do
+        @jobs[job_id][:result] = result
+        @jobs[job_id][:status] = :completed
+      end
+    rescue => e
+      @jobs_mutex.synchronize do
+        @jobs[job_id][:result] = {
+          success: false,
+          output: "",
+          exit_code: -1,
+          error: e.message
+        }
+        @jobs[job_id][:status] = :failed
+        @jobs[job_id][:exception] = e
       end
     end
 
@@ -106,7 +104,8 @@ class TmuxRunner
     @jobs_mutex.synchronize do
       job = @jobs[job_id]
       return false unless job
-      [:completed, :failed].include?(job[:status])
+
+      %i[completed failed].include?(job[:status])
     end
   end
 
@@ -115,6 +114,7 @@ class TmuxRunner
     @jobs_mutex.synchronize do
       job = @jobs[job_id]
       return false unless job
+
       job[:status] == :running
     end
   end
@@ -131,9 +131,8 @@ class TmuxRunner
 
     @jobs_mutex.synchronize do
       result = @jobs[job_id][:result]
-      if @jobs[job_id][:exception]
-        raise @jobs[job_id][:exception]
-      end
+      raise @jobs[job_id][:exception] if @jobs[job_id][:exception]
+
       result
     end
   end
@@ -144,7 +143,8 @@ class TmuxRunner
     @jobs_mutex.synchronize do
       job = @jobs[job_id]
       return nil unless job
-      return nil unless [:completed, :failed].include?(job[:status])
+      return nil unless %i[completed failed].include?(job[:status])
+
       job[:result]
     end
   end
@@ -155,6 +155,7 @@ class TmuxRunner
     @jobs_mutex.synchronize do
       job = @jobs[job_id]
       return nil unless job
+
       job[:status]
     end
   end
@@ -206,16 +207,15 @@ class TmuxRunner
 
   # Run a command and return just the output string
   # Raises an exception if the command fails
-  def run!(command, window_prefix: 'tmux_runner')
+  def run!(command, window_prefix: "tmux_runner")
     result = run(command, window_prefix: window_prefix)
-    unless result[:success]
-      raise "Command failed with exit code #{result[:exit_code]}: #{result[:output]}"
-    end
+    raise "Command failed with exit code #{result[:exit_code]}: #{result[:output]}" unless result[:success]
+
     result[:output]
   end
 
   # Run a command and yield output and exit code to a block
-  def run_with_block(command, window_prefix: 'tmux_runner', &block)
+  def run_with_block(command, window_prefix: "tmux_runner", &block)
     result = run(command, window_prefix: window_prefix)
     yield(result[:output], result[:exit_code])
     result
@@ -224,7 +224,7 @@ class TmuxRunner
   private
 
   def generate_job_id
-    "job_#{Time.now.to_i}_#{rand(100000)}"
+    "job_#{Time.now.to_i}_#{rand(100_000)}"
   end
 
   def parse_output(full_output)
@@ -234,14 +234,16 @@ class TmuxRunner
 
     # Extract command output (between the header and exit code line)
     # Use non-greedy match and look for the final separator before Exit Code
+    # rubocop:disable Layout/LineLength
     output_match = full_output.match(/----------- COMMAND OUTPUT -----------\n(.*?)\n------------------------------------\nExit Code:/m)
+    # rubocop:enable Layout/LineLength
     output = output_match ? output_match[1] : ""
 
     # Check if there was an error
     error = full_output.include?("Error:") ? full_output : nil
 
     {
-      success: exit_code == 0,
+      success: exit_code.zero?,
       output: output,
       exit_code: exit_code,
       error: error,
