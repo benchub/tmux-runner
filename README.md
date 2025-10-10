@@ -102,7 +102,7 @@ TMUX_RUNNER_DEBUG=1 ./tmux_runner.sh "your command"
 ### As a Ruby Library
 
 The library automatically detects and uses the best available script:
-1. Prefers `tmux_runner.sh` (bash) if available (~6% faster)
+1. Prefers `tmux_runner.sh` (bash) if available (~5% faster)
 2. Falls back to `tmux_runner.rb` (ruby) if bash version not found
 3. Can be overridden by passing `script_path:` parameter
 
@@ -233,7 +233,7 @@ Two functionally identical implementations are provided:
 
 **Bash Version (`tmux_runner.sh`)**
 - Pure bash script requiring Bash 4+
-- ~6% faster than Ruby version (498ms vs 530ms average)
+- ~5% faster than Ruby version (500ms vs 524ms average)
 - No Ruby interpreter needed for CLI usage
 - Passes shellcheck with zero warnings
 - **Default choice** - Used automatically by the library
@@ -246,7 +246,7 @@ Two functionally identical implementations are provided:
 
 Both versions:
 - Have identical command-line interfaces
-- Pass the same 41-test suite with 96 assertions
+- Pass the same 45-test suite with 106 assertions
 - Support all features: debug mode, custom prefixes, socket options
 - Handle edge cases identically (empty output, errors, Unicode, etc.)
 
