@@ -58,19 +58,14 @@ def find_delimiter_with_wrapping(buffer, delimiter, require_own_line: true)
     return [idx, idx + delimiter.length] unless require_own_line
 
     # Check if delimiter is at start of buffer or has only whitespace before it on the line
-    if idx.zero?
-      return [idx, idx + delimiter.length]
-    elsif buffer[idx - 1] == "\n"
-      return [idx, idx + delimiter.length]
-    else
-      # Check if there's only whitespace between the last newline and the delimiter
-      last_newline = buffer.rindex("\n", idx - 1)
-      start_of_line = last_newline ? last_newline + 1 : 0
-      text_before = buffer[start_of_line...idx]
-      if text_before.match?(/^\s*$/)
-        return [idx, idx + delimiter.length]
-      end
-    end
+    return [idx, idx + delimiter.length] if idx.zero? || buffer[idx - 1] == "\n"
+
+    # Check if there's only whitespace between the last newline and the delimiter
+    last_newline = buffer.rindex("\n", idx - 1)
+    start_of_line = last_newline ? last_newline + 1 : 0
+    text_before = buffer[start_of_line...idx]
+    return [idx, idx + delimiter.length] if text_before.match?(/^\s*$/)
+
   end
 
   # If not found, try with possible line breaks inserted
@@ -244,7 +239,7 @@ loop do
   if end_result
     # Check if the last few lines contain a shell prompt ($ or # or > at end of line)
     last_lines = pane_content.split("\n").last(5).join("\n")
-    if last_lines =~ /[$#>]\s*$/
+    if /[$#>]\s*$/.match?(last_lines)
       warn "DEBUG: Shell prompt detected, command sequence complete" if DEBUG
       break
     elsif DEBUG && found_end_once == true
@@ -268,7 +263,7 @@ if DEBUG
   warn "DEBUG: End delimiter was #{found_end_once ? "found" : "NOT FOUND"}"
 end
 
-# Note: We no longer wait for the signal here because:
+# NOTE: We no longer wait for the signal here because:
 # 1. The polling loop already confirmed the end delimiter is present
 # 2. The polling loop waits for the shell prompt to return, which proves the wait-for -S
 #    command has completed, eliminating race conditions

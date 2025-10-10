@@ -213,7 +213,7 @@ class TmuxRunner
   end
 
   # Run a command and yield output and exit code to a block
-  def run_with_block(command, window_prefix: "tmux_runner", &block)
+  def run_with_block(command, window_prefix: "tmux_runner")
     result = run(command, window_prefix: window_prefix)
     yield(result[:output], result[:exit_code])
     result
