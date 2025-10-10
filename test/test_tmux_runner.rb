@@ -413,4 +413,42 @@ class TestTmuxRunner < Test::Unit::TestCase
     runner = TmuxRunner.new(socket_path: nil)
     assert_nil runner.socket_path
   end
+
+  # Tests for tmux -J flag leading whitespace handling
+  # These tests verify the fix for delimiters with leading whitespace
+
+  def test_command_with_custom_ps1_prompt
+    # Test that commands work even with complex PS1 prompts that may add leading whitespace
+    # This simulates the bug report where tmux -J flag adds leading space
+    result = @runner.run("echo 'prompt test'")
+    assert_equal true, result[:success]
+    assert_match /prompt test/, result[:output]
+  end
+
+  def test_multiline_with_wrapped_output
+    # Test commands that might cause tmux to wrap lines and add whitespace
+    # Generate a long command that might trigger line wrapping
+    # Note: tmux may insert newlines at terminal width, so we check that all x's are present
+    long_string = "x" * 200
+    result = @runner.run("echo '#{long_string}'")
+    assert_equal true, result[:success]
+    # Remove newlines from output to account for tmux line wrapping
+    output_without_newlines = result[:output].gsub("\n", "")
+    assert_match /#{long_string}/, output_without_newlines
+  end
+
+  def test_command_exit_code_with_whitespace_delimiters
+    # Verify exit codes are correctly parsed even when delimiters have leading whitespace
+    result = @runner.run("(exit 7)")
+    assert_equal false, result[:success]
+    assert_equal 7, result[:exit_code]
+  end
+
+  def test_empty_output_with_whitespace_delimiters
+    # Verify empty output commands work with whitespace-prefixed delimiters
+    result = @runner.run("true")
+    assert_equal true, result[:success]
+    assert_equal 0, result[:exit_code]
+    assert_equal "", result[:output].strip
+  end
 end

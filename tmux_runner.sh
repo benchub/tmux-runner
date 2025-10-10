@@ -198,8 +198,8 @@ retries=0
 found_end_once=0
 
 while true; do
-    # Capture pane content
-    pane_content=$(try_tmux_command capture-pane -p -J -S - -E - -t "$window_target")
+    # Capture pane content (without -J to avoid incorrectly joining real line breaks)
+    pane_content=$(try_tmux_command capture-pane -p -S - -E - -t "$window_target")
 
     if [[ -z "$pane_content" ]]; then
         ((retries++))
@@ -244,16 +244,18 @@ if [[ $retries -lt $max_retries ]]; then
 fi
 
 # --- 6. Retrieve Output and Exit Code ---
-pane_content=$(run_tmux_command capture-pane -p -J -S - -E - -t "$window_target")
+pane_content=$(run_tmux_command capture-pane -p -S - -E - -t "$window_target")
 
 output=""
 exit_code=-1
 
 # Find start delimiter (with newline after it)
-start_line=$(echo "$pane_content" | grep -n "^${start_delimiter}$" | tail -1 | cut -d: -f1 || echo "")
+# Allow optional leading whitespace for robustness
+start_line=$(echo "$pane_content" | grep -n "^[[:space:]]*${start_delimiter}$" | tail -1 | cut -d: -f1 || echo "")
 
 # Find end delimiter
-end_line=$(echo "$pane_content" | grep -n "^${end_delimiter}" | tail -1 | cut -d: -f1 || echo "")
+# Allow optional leading whitespace for robustness
+end_line=$(echo "$pane_content" | grep -n "^[[:space:]]*${end_delimiter}" | tail -1 | cut -d: -f1 || echo "")
 
 if [[ -n "$start_line" ]] && [[ -n "$end_line" ]]; then
     # Verify delimiters are in correct order

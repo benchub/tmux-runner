@@ -46,13 +46,26 @@ end
 # Tmux may wrap long lines, breaking delimiters across multiple lines
 # Returns [start_pos, end_pos] or nil if not found
 # IMPORTANT: Only matches delimiters that appear as their own line (after newline or start of buffer)
+# Allow optional leading whitespace for robustness
 def find_delimiter_with_wrapping(buffer, delimiter)
   # First try exact match with rindex (finds last occurrence)
-  # But only if it's at start of line
+  # But only if it's at start of line (allowing leading whitespace)
   idx = buffer.rindex(delimiter)
-  if idx && (idx.zero? || buffer[idx - 1] == "\n")
-    # Check if it's at start of buffer or after a newline
-    return [idx, idx + delimiter.length]
+  if idx
+    # Check if delimiter is at start of buffer or has only whitespace before it on the line
+    if idx.zero?
+      return [idx, idx + delimiter.length]
+    elsif buffer[idx - 1] == "\n"
+      return [idx, idx + delimiter.length]
+    else
+      # Check if there's only whitespace between the last newline and the delimiter
+      last_newline = buffer.rindex("\n", idx - 1)
+      start_of_line = last_newline ? last_newline + 1 : 0
+      text_before = buffer[start_of_line...idx]
+      if text_before.match?(/^\s*$/)
+        return [idx, idx + delimiter.length]
+      end
+    end
   end
 
   # If not found, try with possible line breaks inserted
@@ -72,7 +85,8 @@ def find_delimiter_with_wrapping(buffer, delimiter)
   end
 
   # Prepend pattern to match start of line (after newline or start of buffer)
-  pattern_str = "(?:^|\\n)#{pattern_parts.join}"
+  # Allow optional leading whitespace for robustness
+  pattern_str = "(?:^|\\n)\\s*#{pattern_parts.join}"
 
   begin
     pattern = Regexp.new(pattern_str, Regexp::MULTILINE)
@@ -194,7 +208,8 @@ found_end_once = false
 
 loop do
   # Capture the pane content with full history (use try_ version since window might not be ready yet)
-  pane_content = try_tmux_command("capture-pane -p -J -S - -E - -t #{window_target}", socket_path)
+  # Don't use -J flag to avoid incorrectly joining real line breaks
+  pane_content = try_tmux_command("capture-pane -p -S - -E - -t #{window_target}", socket_path)
 
   # If capture failed, window might not be ready yet
   if pane_content.nil?
@@ -241,7 +256,8 @@ run_tmux_command("wait-for #{channel_name}", socket_path) if retries < max_retri
 # --- 5. Retrieve Output and Exit Code ---
 # Since wait-for returned, the command is guaranteed to be finished.
 # Capture the entire pane history with full scrollback.
-pane_content = run_tmux_command("capture-pane -p -J -S - -E - -t #{window_target}", socket_path)
+# Don't use -J flag to avoid incorrectly joining real line breaks
+pane_content = run_tmux_command("capture-pane -p -S - -E - -t #{window_target}", socket_path)
 
 output = ""
 exit_code = -1 # Default to a script error code.
