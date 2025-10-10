@@ -433,4 +433,20 @@ class TestTmuxRunner < Test::Unit::TestCase
     output_without_newlines = result[:output].gsub("\n", "")
     assert_match /#{long_string}/, output_without_newlines
   end
+
+  def test_command_without_trailing_newline
+    # Test commands that don't output a trailing newline (printf, echo -n)
+    result = @runner.run("printf 'no newline'")
+    assert_equal true, result[:success]
+    assert_equal 0, result[:exit_code]
+    assert_equal "no newline", result[:output]
+  end
+
+  def test_echo_dash_n
+    # Test echo -n which also doesn't output a trailing newline
+    result = @runner.run("echo -n 'test output'")
+    assert_equal true, result[:success]
+    assert_equal 0, result[:exit_code]
+    assert_equal "test output", result[:output]
+  end
 end

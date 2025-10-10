@@ -254,8 +254,8 @@ exit_code=-1
 start_line=$(echo "$pane_content" | grep -n "^[[:space:]]*${start_delimiter}$" | tail -1 | cut -d: -f1 || echo "")
 
 # Find end delimiter
-# Allow optional leading whitespace for robustness
-end_line=$(echo "$pane_content" | grep -n "^[[:space:]]*${end_delimiter}" | tail -1 | cut -d: -f1 || echo "")
+# Allow it anywhere on a line (not just at start) to handle commands without trailing newlines
+end_line=$(echo "$pane_content" | grep -n "${end_delimiter}" | tail -1 | cut -d: -f1 || echo "")
 
 if [[ -n "$start_line" ]] && [[ -n "$end_line" ]]; then
     # Verify delimiters are in correct order
@@ -270,15 +270,33 @@ if [[ -n "$start_line" ]] && [[ -n "$end_line" ]]; then
         output="$pane_content"
     else
         # Extract output between delimiters
-        # If start and end are adjacent (no lines between them), output should be empty
-        if [[ $((start_line + 1)) -gt $((end_line - 1)) ]]; then
+        # Handle case where end delimiter may be on same line as output (no trailing newline)
+        if [[ $start_line -eq $end_line ]]; then
+            # Start and end delimiters on same line - extract text between them
+            line_content=$(echo "$pane_content" | sed -n "${start_line}p")
+            output=$(echo "$line_content" | sed "s/^.*${start_delimiter}//" | sed "s/${end_delimiter}.*$//")
+        elif [[ $((start_line + 1)) -eq $end_line ]]; then
+            # Delimiters on adjacent lines - extract partial line content
+            end_line_content=$(echo "$pane_content" | sed -n "${end_line}p")
+            output=$(echo "$end_line_content" | sed "s/${end_delimiter}.*$//")
+        elif [[ $((start_line + 1)) -gt $((end_line - 1)) ]]; then
+            # No lines between delimiters
             output=""
         else
-            output=$(echo "$pane_content" | sed -n "$((start_line + 1)),$((end_line - 1))p" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            # Multiple lines between delimiters
+            # First get full lines between delimiters
+            output=$(echo "$pane_content" | sed -n "$((start_line + 1)),$((end_line - 1))p")
+            # Then append any content before the end delimiter on the end line
+            end_line_content=$(echo "$pane_content" | sed -n "${end_line}p")
+            partial=$(echo "$end_line_content" | sed "s/${end_delimiter}.*$//")
+            if [[ -n "$partial" ]]; then
+                output="${output}${partial}"
+            fi
+            output=$(echo "$output" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
         fi
 
-        # Extract exit code (comes right after end delimiter on same line)
-        exit_code_str=$(echo "$pane_content" | sed -n "${end_line}p" | sed "s/^${end_delimiter}//")
+        # Extract exit code (comes right after end delimiter, possibly with other text before it)
+        exit_code_str=$(echo "$pane_content" | sed -n "${end_line}p" | sed "s/.*${end_delimiter}//")
 
         if [[ "$exit_code_str" =~ ^[0-9]+$ ]]; then
             exit_code=$exit_code_str

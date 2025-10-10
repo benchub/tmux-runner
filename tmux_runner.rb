@@ -47,11 +47,16 @@ end
 # Returns [start_pos, end_pos] or nil if not found
 # IMPORTANT: Only matches delimiters that appear as their own line (after newline or start of buffer)
 # Allow optional leading whitespace for robustness
-def find_delimiter_with_wrapping(buffer, delimiter)
+# @param buffer [String] the buffer to search in
+# @param delimiter [String] the delimiter to find
+# @param require_own_line [Boolean] if true, delimiter must be on its own line (default: true)
+def find_delimiter_with_wrapping(buffer, delimiter, require_own_line: true)
   # First try exact match with rindex (finds last occurrence)
-  # But only if it's at start of line (allowing leading whitespace)
   idx = buffer.rindex(delimiter)
   if idx
+    # If we don't require the delimiter to be on its own line, just return it
+    return [idx, idx + delimiter.length] unless require_own_line
+
     # Check if delimiter is at start of buffer or has only whitespace before it on the line
     if idx.zero?
       return [idx, idx + delimiter.length]
@@ -224,7 +229,8 @@ loop do
 
   # Look for the end delimiter to know when command is complete
   # Handle tmux line wrapping by using flexible delimiter search
-  end_result = find_delimiter_with_wrapping(pane_content, end_delimiter)
+  # Don't require end delimiter to be on its own line (handles commands without trailing newline)
+  end_result = find_delimiter_with_wrapping(pane_content, end_delimiter, require_own_line: false)
 
   # Debug: Report when we first see delimiter
   if DEBUG && end_result && !found_end_once
@@ -265,7 +271,8 @@ exit_code = -1 # Default to a script error code.
 # Parse output by finding content between start and end delimiters
 # Handle tmux line wrapping using flexible delimiter search
 start_result = find_delimiter_with_wrapping(pane_content, start_delimiter)
-end_result = find_delimiter_with_wrapping(pane_content, end_delimiter)
+# Don't require end delimiter to be on its own line (handles commands without trailing newline)
+end_result = find_delimiter_with_wrapping(pane_content, end_delimiter, require_own_line: false)
 
 # Adjust start_result to include the newline after the delimiter
 if start_result
