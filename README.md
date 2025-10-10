@@ -335,15 +335,24 @@ Window names will be: `{prefix}_{pid}_{timestamp}` (e.g., `web_12345_1234567890`
 Comprehensive test suite with 58 test cases (210 assertions) covering all functionality:
 
 ```bash
-# Run all tests
-ruby test/test_tmux_runner.rb
+# Run all tests (automatically starts tmux if needed)
+ruby test/run_tests.rb
 
 # Run specific test
-ruby test/test_tmux_runner.rb --name test_simple_command_success
+ruby test/run_tests.rb --pattern test_simple_command_success
 
 # With verbose output
-ruby test/test_tmux_runner.rb --verbose
+ruby test/run_tests.rb --verbose
+
+# Or run directly (requires being inside tmux)
+ruby test/test_tmux_runner.rb --name test_simple_command_success
 ```
+
+The test runner (`run_tests.rb`) will automatically:
+- Start a tmux session if you're not already inside one
+- Create the required shared socket at `/tmp/shared-session`
+- Set up proper permissions
+- Run all tests and display results
 
 Test coverage includes:
 - **Basic Functionality**: Simple commands, error handling, exit codes, multiline output
