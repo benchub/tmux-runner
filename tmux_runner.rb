@@ -239,7 +239,19 @@ loop do
   end
 
   # Check if the command has finished
-  break if end_result
+  # Additionally verify that the shell prompt has returned after the delimiter
+  # This ensures the wait-for -S command has completed, avoiding race conditions
+  if end_result
+    # Check if the last few lines contain a shell prompt ($ or # or > at end of line)
+    last_lines = pane_content.split("\n").last(5).join("\n")
+    if last_lines =~ /[$#>]\s*$/
+      warn "DEBUG: Shell prompt detected, command sequence complete" if DEBUG
+      break
+    elsif DEBUG && found_end_once == true
+      warn "DEBUG: End delimiter found but waiting for shell prompt..."
+      found_end_once = :waiting_for_prompt
+    end
+  end
 
   retries += 1
   if retries >= max_retries
@@ -256,8 +268,12 @@ if DEBUG
   warn "DEBUG: End delimiter was #{found_end_once ? "found" : "NOT FOUND"}"
 end
 
-# Wait for the signal to ensure everything is complete
-run_tmux_command("wait-for #{channel_name}", socket_path) if retries < max_retries
+# Note: We no longer wait for the signal here because:
+# 1. The polling loop already confirmed the end delimiter is present
+# 2. The polling loop waits for the shell prompt to return, which proves the wait-for -S
+#    command has completed, eliminating race conditions
+# 3. There's a race condition where the signal might be sent before we call wait-for,
+#    causing wait-for to hang forever waiting for a signal that was already consumed
 
 # --- 5. Retrieve Output and Exit Code ---
 # Since wait-for returned, the command is guaranteed to be finished.

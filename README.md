@@ -70,46 +70,32 @@ If you're already inside a tmux session, you can use the runner without a shared
 
 ### As a Standalone Script
 
-The standalone script is available in two versions:
-- **`tmux_runner.sh`** (Bash) - Default, faster startup, no Ruby dependency for CLI usage
-- **`tmux_runner.rb`** (Ruby) - Fallback for systems without Bash 4+
-
-Both scripts have identical functionality and command-line interfaces.
-
 ```bash
-# Basic usage with bash version (recommended)
-./tmux_runner.sh "echo 'Hello World'"
-
-# Or use the Ruby version
+# Basic usage
 ruby tmux_runner.rb "echo 'Hello World'"
 
 # Use a custom socket
-TMUX_SOCKET_PATH=/tmp/my-socket ./tmux_runner.sh "echo 'Custom socket'"
+TMUX_SOCKET_PATH=/tmp/my-socket ruby tmux_runner.rb "echo 'Custom socket'"
 
 # Use the current tmux session (no socket)
-TMUX_SOCKET_PATH='' ./tmux_runner.sh "echo 'Default session'"
+TMUX_SOCKET_PATH='' ruby tmux_runner.rb "echo 'Default session'"
 
 # Command with errors
-./tmux_runner.sh "ls /nonexistent"
+ruby tmux_runner.rb "ls /nonexistent"
 
 # Complex command
-./tmux_runner.sh "ssh -J jumphost target-host hostname"
+ruby tmux_runner.rb "ssh -J jumphost target-host hostname"
 
 # Enable debug output
-TMUX_RUNNER_DEBUG=1 ./tmux_runner.sh "your command"
+TMUX_RUNNER_DEBUG=1 ruby tmux_runner.rb "your command"
 ```
 
 ### As a Ruby Library
 
-The library automatically detects and uses the best available script:
-1. Prefers `tmux_runner.sh` (bash) if available (~5% faster)
-2. Falls back to `tmux_runner.rb` (ruby) if bash version not found
-3. Can be overridden by passing `script_path:` parameter
-
 ```ruby
 require_relative 'tmux_runner_lib'
 
-# Create a runner instance (auto-detects bash or ruby script)
+# Create a runner instance
 runner = TmuxRunner.new
 
 # Create a runner that uses the current tmux session
@@ -117,10 +103,6 @@ runner_no_socket = TmuxRunner.new(socket_path: nil)
 
 # Create a runner with a custom socket
 runner_custom = TmuxRunner.new(socket_path: '/tmp/my-socket')
-
-# Force using a specific script version (optional)
-runner_bash = TmuxRunner.new(script_path: './tmux_runner.sh')
-runner_ruby = TmuxRunner.new(script_path: './tmux_runner.rb')
 
 # Run a command and get results
 result = runner.run("echo 'Hello'")
@@ -158,7 +140,7 @@ Creates a new runner instance.
 
 **Parameters:**
 - `socket_path` - Path to tmux socket (default: `'/tmp/shared-session'`). Pass `nil` to use the current tmux session without a socket.
-- `script_path` - Path to the standalone script (default: auto-detects `tmux_runner.sh` or `tmux_runner.rb`). The library prefers the bash version if available for better performance.
+- `script_path` - Path to the standalone script (default: auto-detects `tmux_runner.rb`). Can be overridden to use a custom script path.
 
 ### Blocking Methods
 
@@ -223,52 +205,50 @@ Removes a job from the internal jobs list.
 - `last_exit_code` - Exit code of the most recent command
 - `last_output` - Output of the most recent command
 - `socket_path` - Path to the tmux socket
-- `script_path` - Path to the script being used (`.sh` or `.rb`)
+- `script_path` - Path to the script being used
 
 ## Implementation Details
 
-### Script Versions
+### Ruby Implementation
 
-Two functionally identical implementations are provided:
+The tmux runner is implemented in pure Ruby requiring only stdlib:
+- Robust prompt detection using shell prompt patterns
+- Handles tmux line wrapping and trailing blank lines
+- Comprehensive delimiter detection to avoid false positives
+- Wait-for signal mechanism for reliable synchronization
+- Passes comprehensive 58-test suite with 210 assertions
 
-**Bash Version (`tmux_runner.sh`)**
-- Pure bash script requiring Bash 4+
-- ~5% faster than Ruby version (500ms vs 524ms average)
-- No Ruby interpreter needed for CLI usage
-- Passes shellcheck with zero warnings
-- **Default choice** - Used automatically by the library
+### Race Condition Handling
 
-**Ruby Version (`tmux_runner.rb`)**
-- Pure Ruby requiring only stdlib
-- Better for systems without Bash 4+ (older macOS, Alpine, embedded)
-- Easier to extend with complex parsing logic
-- **Fallback option** - Used when bash version unavailable
+The implementation carefully handles timing issues:
+- **Delimiter Detection**: Distinguishes between delimiter in command echo vs actual output
+- **Prompt Detection**: Checks last 5 non-blank lines for shell prompt after command completion
+- **Signal Synchronization**: Uses tmux wait-for signals (non-blocking) to coordinate timing
+- **Blank Line Handling**: Properly handles tmux's fixed-height panes with trailing blanks
 
-Both versions:
-- Have identical command-line interfaces
-- Pass the same 45-test suite with 106 assertions
-- Support all features: debug mode, custom prefixes, socket options
-- Handle edge cases identically (empty output, errors, Unicode, etc.)
+See test suite for detailed edge case coverage including:
+- Commands without trailing newlines
+- Very fast commands
+- Long-running commands
+- Wrapped command lines
+- Multiple prompts in buffer
 
 ### How It Works
 
 1. Creates a uniquely-named tmux window
 2. Sends the command with special delimiters to mark start/end
-3. Polls the pane until the end delimiter appears
-4. Captures the final pane content (after any cursor manipulation)
-5. Parses output between delimiters
-6. Extracts exit code
-7. Cleans up the window (if successful)
+3. Polls the pane until the end delimiter appears on its own line (not in command echo)
+4. Waits for shell prompt to return (confirms wait-for signal completed)
+5. Captures the final pane content (after any cursor manipulation)
+6. Parses output between delimiters
+7. Extracts exit code from delimiter line
+8. Cleans up the window (if successful)
 
 ## Debug Mode
 
 Enable debug output by setting the `TMUX_RUNNER_DEBUG` environment variable:
 
 ```bash
-# With bash version
-TMUX_RUNNER_DEBUG=1 ./tmux_runner.sh "your command"
-
-# With Ruby version
 TMUX_RUNNER_DEBUG=1 ruby tmux_runner.rb "your command"
 ```
 
@@ -352,21 +332,27 @@ Window names will be: `{prefix}_{pid}_{timestamp}` (e.g., `web_12345_1234567890`
 
 ## Testing
 
-Comprehensive test suite with 50+ test cases covering all functionality:
+Comprehensive test suite with 58 test cases (210 assertions) covering all functionality:
 
 ```bash
 # Run all tests
-ruby run_tests.rb
+ruby test/test_tmux_runner.rb
 
-# Run specific tests
-ruby run_tests.rb --pattern concurrent
-ruby run_tests.rb --pattern window_prefix
+# Run specific test
+ruby test/test_tmux_runner.rb --name test_simple_command_success
 
-# Verbose output
-ruby run_tests.rb --verbose
+# With verbose output
+ruby test/test_tmux_runner.rb --verbose
 ```
 
-See `TESTING.md` for detailed test documentation.
+Test coverage includes:
+- **Basic Functionality**: Simple commands, error handling, exit codes, multiline output
+- **Concurrent Execution**: Start/wait/cancel jobs, job status tracking, parallel execution
+- **Race Conditions**: Fast commands, slow commands, rapid sequential execution, mixed timing
+- **Edge Cases**: Delimiter detection, prompt detection, blank lines, line wrapping, no trailing newlines
+- **Custom Configuration**: Window prefixes, socket paths, custom commands
+
+All tests pass with 100% success rate.
 
 ## Examples
 

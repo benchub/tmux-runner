@@ -1,6 +1,6 @@
 # TmuxRunner Test Suite
 
-Comprehensive test suite for the TmuxRunner library with 50+ test cases.
+Comprehensive test suite for the TmuxRunner library with 58 test cases and 210 assertions.
 
 ## Prerequisites
 
@@ -16,32 +16,19 @@ chmod 666 /tmp/shared-session
 ### Run all tests
 
 ```bash
-ruby run_tests.rb
+ruby test/test_tmux_runner.rb
 ```
 
 ### Run tests in verbose mode
 
 ```bash
-ruby run_tests.rb --verbose
+ruby test/test_tmux_runner.rb --verbose
 ```
 
-### Run specific tests by pattern
+### Run a specific test
 
 ```bash
-# Run only concurrent tests
-ruby run_tests.rb --pattern concurrent
-
-# Run only window prefix tests
-ruby run_tests.rb --pattern window_prefix
-
-# Run only basic functionality tests
-ruby run_tests.rb --pattern simple
-```
-
-### Run directly with Test::Unit
-
-```bash
-ruby test_tmux_runner.rb
+ruby test/test_tmux_runner.rb --name test_simple_command_success
 ```
 
 ## Test Coverage

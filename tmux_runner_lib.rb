@@ -19,15 +19,13 @@ class TmuxRunner
     @jobs = {}
     @jobs_mutex = Mutex.new
 
-    # Auto-detect script path - prefer bash version
+    # Auto-detect script path - use Ruby version
     if script_path
       @script_path = script_path
-    elsif File.exist?(File.join(File.dirname(__FILE__), "tmux_runner.sh"))
-      @script_path = File.join(File.dirname(__FILE__), "tmux_runner.sh")
     elsif File.exist?(File.join(File.dirname(__FILE__), "tmux_runner.rb"))
       @script_path = File.join(File.dirname(__FILE__), "tmux_runner.rb")
     else
-      raise "Cannot find tmux_runner script (tried .sh and .rb)"
+      raise "Cannot find tmux_runner.rb script"
     end
 
     return if File.exist?(@script_path)
