@@ -324,6 +324,35 @@ Debug output includes:
 - Loop iteration counts
 - Line capture statistics
 
+## Special Character Handling
+
+The tmux runner preserves most special characters correctly. However, some characters require special attention:
+
+### Exclamation Mark (!)
+
+The `!` character can trigger shell history expansion in interactive shells. To safely use `!` in commands:
+
+**Option 1: Use bash -c with proper quoting (recommended)**
+```bash
+ruby tmux_runner.rb 'bash -c '"'"'msg="test!" && echo "$msg"'"'"''
+```
+
+**Option 2: Use single quotes in the variable assignment**
+```bash
+ruby tmux_runner.rb "msg='test!' && echo \"\$msg\""
+```
+
+**Why this matters**: When you run a command like `msg="test!" && echo "$msg"`, the shell may expand `!` before tmux even sees it, especially if history expansion is enabled (`set +H` to disable in bash).
+
+### Other Special Characters
+
+All other common special characters work correctly with proper shell quoting:
+- `@`, `#`, `$`, `%`, `^`, `&`, `*` - Work in double quotes
+- `(`, `)`, `[`, `]`, `{`, `}` - Work in double quotes
+- `|`, `\`, `;`, `'`, `"`, `<`, `>`, `?`, `~`, `` ` `` - Work with standard shell escaping
+
+See the test suite (`test/test_special_characters.rb`) for working examples of each character.
+
 ## Troubleshooting
 
 ### "Cannot access tmux socket"
