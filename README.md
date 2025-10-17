@@ -11,6 +11,8 @@ Run commands in tmux windows and reliably capture their output, including stderr
 - ✅ Returns proper exit codes
 - ✅ Can be used as standalone script or Ruby library
 - ✅ Automatic window cleanup on success (configurable)
+- ✅ Preserves shell variables and special characters correctly
+- ✅ Supports complex SSH commands with variable expansion
 
 ## Prerequisites
 
@@ -83,8 +85,11 @@ TMUX_SOCKET_PATH='' ruby tmux_runner.rb "echo 'Default session'"
 # Command with errors
 ruby tmux_runner.rb "ls /nonexistent"
 
-# Complex command
-ruby tmux_runner.rb "ssh -J jumphost target-host hostname"
+# Complex SSH command with variables
+ruby tmux_runner.rb "ssh -J jumphost target-host 'h=\$(hostname) && echo \$h'"
+
+# SSH command with array arguments (alternative)
+./tmux_runner.rb ssh -J jumphost target-host 'h=$(hostname) && echo $h'
 
 # Enable debug output
 TMUX_RUNNER_DEBUG=1 ruby tmux_runner.rb "your command"
@@ -275,7 +280,9 @@ The tmux runner is implemented in pure Ruby requiring only stdlib:
 - Handles tmux line wrapping and trailing blank lines
 - Comprehensive delimiter detection to avoid false positives
 - Wait-for signal mechanism for reliable synchronization
-- Passes comprehensive 58-test suite with 210 assertions
+- Array-based command execution to prevent premature variable expansion
+- Proper handling of shell quoting for multi-argument commands
+- Passes comprehensive 145-test suite with 392 assertions
 
 ### Race Condition Handling
 
@@ -391,13 +398,16 @@ Window names will be: `{prefix}_{pid}_{timestamp}` (e.g., `web_12345_1234567890`
 
 ## Testing
 
-Comprehensive test suite with 87 test cases (271 assertions) covering all functionality:
+Comprehensive test suite with 145 test cases (392 assertions) covering all functionality:
 
 ```bash
 # Run all tests (automatically starts tmux if needed)
 ruby test/run_tests.rb
 
-# Run specific test
+# Run specific test file
+ruby test/test_variable_expansion_basic.rb
+
+# Run specific test pattern
 ruby test/run_tests.rb --pattern test_simple_command_success
 
 # With verbose output
@@ -411,6 +421,8 @@ The test runner (`run_tests.rb`) will automatically:
 - Start a tmux session if you're not already inside one
 - Create the required shared socket at `/tmp/shared-session`
 - Set up proper permissions
+- Clean up leftover test windows before running
+- Validate session exists and recreate if needed
 - Run all tests and display results
 
 Test coverage includes:
@@ -420,6 +432,11 @@ Test coverage includes:
 - **Race Conditions**: Fast commands, slow commands, rapid sequential execution, mixed timing
 - **Edge Cases**: Delimiter detection, prompt detection, blank lines, line wrapping, no trailing newlines
 - **Custom Configuration**: Window prefixes, socket paths, custom commands
+- **Variable Expansion** (58 tests):
+  - Basic: Variable assignment, command substitution, quoting contexts, environment variables
+  - Advanced: bash -c, sh -c, special variables ($$, $?, $#), arrays, parameter expansion, loops, pipes, SSH-like scenarios
+  - Edge Cases: Variables with spaces/newlines/special chars, variable isolation, empty/undefined variables
+- **Special Characters** (22 tests): Individual tests for !, @, #, $, %, ^, &, *, (, ), [, ], {, }, |, \, ;, ', ", <, >, ?, ~, `
 
 All tests pass with 100% success rate.
 

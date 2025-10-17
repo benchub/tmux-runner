@@ -1,6 +1,6 @@
 # TmuxRunner Test Suite
 
-Comprehensive test suite for the TmuxRunner library with 87 test cases and 271 assertions.
+Comprehensive test suite for the TmuxRunner library with 145 test cases and 392 assertions.
 
 ## Prerequisites
 
@@ -16,24 +16,40 @@ chmod 666 /tmp/shared-session
 ### Run all tests
 
 ```bash
+# Recommended: Use the test runner (auto-starts tmux, cleans up)
+ruby test/run_tests.rb
+
+# Or run individual test file
 ruby test/test_tmux_runner.rb
 ```
 
 ### Run tests in verbose mode
 
 ```bash
-ruby test/test_tmux_runner.rb --verbose
+ruby test/run_tests.rb --verbose
+```
+
+### Run specific test file
+
+```bash
+ruby test/test_variable_expansion_basic.rb
+ruby test/test_variable_expansion_advanced.rb
+ruby test/test_variable_expansion_edge_cases.rb
+ruby test/test_special_characters.rb
 ```
 
 ### Run a specific test
 
 ```bash
 ruby test/test_tmux_runner.rb --name test_simple_command_success
+ruby test/run_tests.rb --pattern test_variable
 ```
 
 ## Test Coverage
 
-### Basic Functionality (8 tests)
+### Core TmuxRunner Tests (test_tmux_runner.rb - 87 tests)
+
+#### Basic Functionality (8 tests)
 - ✅ `test_simple_command_success` - Basic echo command
 - ✅ `test_simple_command_failure` - Non-existent directory
 - ✅ `test_command_with_stderr` - stderr capture
@@ -125,6 +141,74 @@ ruby test/test_tmux_runner.rb --name test_simple_command_success
 - ✅ `test_socket_path_custom` - Custom socket path
 - ✅ `test_socket_path_nil` - Nil socket path
 
+### Variable Expansion Tests (58 tests)
+
+#### Basic Variable Expansion (test_variable_expansion_basic.rb - 12 tests)
+- ✅ `test_variable_assignment_and_expansion` - h=$(hostname) && echo $h
+- ✅ `test_variable_with_echo_prefix` - Hostname: $h format
+- ✅ `test_multiple_variables` - Multiple variable assignment
+- ✅ `test_command_substitution_backticks` - Backtick substitution
+- ✅ `test_command_substitution_dollar_paren` - $() substitution
+- ✅ `test_nested_command_substitution` - Nested $(echo $(echo))
+- ✅ `test_single_quotes_preserve_literal_dollar` - Literal $HOME
+- ✅ `test_double_quotes_expand_variables` - Expanded $HOME
+- ✅ `test_env_variable_preservation` - TEST_VAR preservation
+- ✅ `test_path_variable_access` - $PATH access
+- ✅ `test_simple_echo_still_works` - Simple echo compatibility
+- ✅ `test_command_without_variables_still_works` - Non-variable commands
+
+#### Advanced Variable Expansion (test_variable_expansion_advanced.rb - 13 tests)
+- ✅ `test_bash_c_with_single_quotes` - bash -c 'h=$(hostname)'
+- ✅ `test_bash_c_with_complex_command` - Arithmetic with variables
+- ✅ `test_sh_c_with_single_quotes` - sh -c with variables
+- ✅ `test_pid_variable` - $$ special variable
+- ✅ `test_exit_code_variable` - $? special variable
+- ✅ `test_argument_count_variable` - $# special variable
+- ✅ `test_bash_array_variable` - Bash array access
+- ✅ `test_parameter_expansion_default_value` - ${VAR:-default}
+- ✅ `test_parameter_expansion_substring` - ${str:1:3}
+- ✅ `test_for_loop_with_variable` - Loop with variable accumulator
+- ✅ `test_variable_through_pipe` - Variable piped to grep
+- ✅ `test_ssh_like_command_simulation` - SSH-style commands
+- ✅ `test_multiple_ssh_like_commands` - Multiple SSH variables
+- ✅ `test_complex_command_performance` - Performance verification
+
+#### Edge Case Variable Expansion (test_variable_expansion_edge_cases.rb - 11 tests)
+- ✅ `test_variable_with_spaces` - Variables containing spaces
+- ✅ `test_variable_with_newlines` - Variables with \n
+- ✅ `test_variable_with_special_chars` - Special characters @#$
+- ✅ `test_variable_isolation_between_runs` - No variable leakage
+- ✅ `test_empty_variable` - Empty string variables
+- ✅ `test_undefined_variable` - Undefined variable behavior
+- ✅ `test_variable_with_equals_sign` - Variables with = in value
+- ✅ `test_variable_containing_delimiter_like_text` - Delimiter-like text
+- ✅ `test_command_substitution_with_delimiter_like_output` - Delimiter in output
+- ✅ `test_variable_with_backslashes` - Backslash handling
+
+### Special Character Tests (test_special_characters.rb - 22 tests)
+- ✅ `test_exclamation_mark` - ! character
+- ✅ `test_at_sign` - @ character
+- ✅ `test_hash_sign` - # character
+- ✅ `test_dollar_sign` - $ character
+- ✅ `test_percent_sign` - % character
+- ✅ `test_caret_sign` - ^ character
+- ✅ `test_ampersand_sign` - & character
+- ✅ `test_asterisk_sign` - * character
+- ✅ `test_parentheses` - () characters
+- ✅ `test_square_brackets` - [] characters
+- ✅ `test_curly_braces` - {} characters
+- ✅ `test_pipe_sign` - | character
+- ✅ `test_backslash` - \ character
+- ✅ `test_semicolon` - ; character
+- ✅ `test_single_quote` - ' character
+- ✅ `test_double_quote` - " character
+- ✅ `test_less_than` - < character
+- ✅ `test_greater_than` - > character
+- ✅ `test_question_mark` - ? character
+- ✅ `test_tilde` - ~ character
+- ✅ `test_backtick` - ` character
+- ✅ `test_multiple_special_chars_combination` - Combined special chars
+
 ## Test Categories
 
 ### Quick Tests (< 1 second each)
@@ -143,39 +227,53 @@ To run tests in CI:
 
 ```bash
 #!/bin/bash
-# Setup tmux
-tmux -S /tmp/shared-session new-session -d -s ci_tests
-chmod 666 /tmp/shared-session
+# The test runner handles most setup automatically
+# Just ensure tmux is available
+cd /path/to/tmux-runner
+ruby test/run_tests.rb --verbose
 
-# Run tests
-ruby run_tests.rb --verbose
-
-# Cleanup
-tmux -S /tmp/shared-session kill-session -t ci_tests
-rm /tmp/shared-session
+# Cleanup (optional, test runner cleans up windows)
+tmux -S /tmp/shared-session kill-session -t test_session 2>/dev/null
+rm -f /tmp/shared-session
 ```
 
 ## Adding New Tests
 
-To add new tests, add methods to `test_tmux_runner.rb`:
+To add new tests:
+
+1. Choose the appropriate test file:
+   - `test/test_tmux_runner.rb` - Core functionality, library features
+   - `test/test_variable_expansion_basic.rb` - Basic variable expansion
+   - `test/test_variable_expansion_advanced.rb` - Complex shell scenarios
+   - `test/test_variable_expansion_edge_cases.rb` - Edge cases and special situations
+   - `test/test_special_characters.rb` - Individual special character tests
+
+2. Add test method:
 
 ```ruby
 def test_your_new_feature
-  result = @runner.run("your command")
-  assert_equal expected, result[:something]
+  result = run_command("your command")
+  assert_equal 0, result[:exit_code]
+  assert_match /expected/, result[:command_output]
 end
+```
+
+3. Add to `test/run_tests.rb` if creating a new test file:
+
+```ruby
+require_relative 'test_your_new_file'
 ```
 
 Test naming convention: `test_<category>_<specific_behavior>`
 
 ## Test Results
 
-**✅ All 87 tests pass successfully!**
+**✅ All 145 tests pass successfully!**
 
-- 87 tests
-- 271 assertions
+- 145 tests (87 core + 58 variable expansion + 22 special characters)
+- 392 assertions
 - 0 failures
-- Test run time: ~70 seconds
+- Test run time: ~100 seconds
 
 ## Known Issues
 

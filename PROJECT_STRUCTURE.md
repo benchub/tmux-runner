@@ -17,9 +17,13 @@ tmux_runner/
 │   ├── example_practical.rb       # Real-world patterns (3 examples)
 │   └── example_socket_options.rb  # Socket configuration examples
 │
-└── test/                          # Test suite
-    ├── run_tests.rb               # Test runner with options
-    └── test_tmux_runner.rb        # 41 test cases, 96 assertions
+└── test/                                      # Test suite
+    ├── run_tests.rb                           # Test runner with options
+    ├── test_tmux_runner.rb                    # 87 test cases (core functionality)
+    ├── test_variable_expansion_basic.rb       # 12 tests (basic variable expansion)
+    ├── test_variable_expansion_advanced.rb    # 13 tests (advanced shell scenarios)
+    ├── test_variable_expansion_edge_cases.rb  # 11 tests (edge cases)
+    └── test_special_characters.rb             # 22 tests (individual special chars)
 ```
 
 ## File Descriptions
@@ -98,28 +102,61 @@ tmux_runner/
 ### Tests
 
 **`test/test_tmux_runner.rb`**
-- Comprehensive test suite: 41 test cases, 96 assertions
+- Core functionality test suite: 87 test cases
 - Tests both bash and Ruby script implementations
 - Categories:
   - Basic functionality (8 tests)
   - run! method (2 tests)
-  - run_with_block (2 tests - improved to verify return values)
+  - run_with_block (1 test)
+  - Array arguments (29 tests)
   - Concurrent execution (11 tests)
   - Custom window prefix (5 tests)
   - Complex commands (5 tests)
   - Edge cases (5 tests)
   - State tracking (2 tests)
   - Cancellation (1 test)
+  - Socket path configuration (4 tests)
 - Uses Ruby's Test::Unit framework
 - 100% pass rate with both script implementations
+
+**`test/test_variable_expansion_basic.rb`**
+- 12 tests for basic variable expansion functionality
+- Tests variable assignment, command substitution, quoting contexts
+- Environment variable handling
+- Ensures simple commands still work
+
+**`test/test_variable_expansion_advanced.rb`**
+- 13 tests for complex shell scenarios
+- bash -c and sh -c with variables
+- Special variables ($$, $?, $#)
+- Array variables and parameter expansion
+- Loops, pipes, and SSH-like scenarios
+- Performance verification
+
+**`test/test_variable_expansion_edge_cases.rb`**
+- 11 tests for edge cases and special situations
+- Variables with spaces, newlines, special characters
+- Variable isolation between runs
+- Empty and undefined variables
+- Delimiter-like text handling
+
+**`test/test_special_characters.rb`**
+- 22 tests for individual special character handling
+- Each common special character tested separately
+- Includes: ! @ # $ % ^ & * ( ) [ ] { } | \ ; ' " < > ? ~ `
+- Makes it easy to isolate which characters cause issues
 
 **`test/run_tests.rb`**
 - Test runner with options:
   - `--verbose` - Detailed output
   - `--pattern PATTERN` - Run specific tests
   - `--help` - Show help
+- Auto-starts tmux session if not inside one
 - Validates prerequisites (tmux socket)
-- ~60 lines
+- Cleans up leftover test windows before running
+- Validates session exists and recreates if needed
+- Shows which test suite is loading
+- Loads all 5 test files (145 total tests)
 
 ### Documentation
 
@@ -204,7 +241,10 @@ result = runner.wait(job)
 5. Update documentation (README.md, PROJECT_STRUCTURE.md)
 
 ### Testing Strategy
-- Unit tests in `test/test_tmux_runner.rb` (41 tests, 96 assertions)
+- Unit tests across 5 test files (145 tests, 392 assertions):
+  - Core functionality: 87 tests
+  - Variable expansion: 58 tests (basic, advanced, edge cases)
+  - Special characters: 22 tests
 - Tests automatically use auto-detected script (bash by default)
 - Integration examples in `examples/`
 - Manual testing: `./tmux_runner.sh "command"` or `ruby tmux_runner.rb "command"`
@@ -216,7 +256,8 @@ result = runner.wait(job)
   - Support same environment variables
   - Produce identical output format
   - Handle edge cases the same way
-  - Pass all 41 test cases
+  - Preserve shell variables and special characters correctly
+  - Pass all 145 test cases
 - Library (`tmux_runner_lib.rb`) works transparently with either
 
 ### Key Design Principles
@@ -236,7 +277,12 @@ result = runner.wait(job)
   - `tmux_runner.rb`: ~346 lines (ruby)
   - `tmux_runner_lib.rb`: ~253 lines (library wrapper)
 - Examples: ~500 lines total
-- Tests: ~450 lines total (41 tests, 96 assertions)
+- Tests: ~980 lines total (145 tests, 392 assertions)
+  - `test_tmux_runner.rb`: ~450 lines (87 tests)
+  - `test_variable_expansion_basic.rb`: ~110 lines (12 tests)
+  - `test_variable_expansion_advanced.rb`: ~128 lines (13 tests)
+  - `test_variable_expansion_edge_cases.rb`: ~104 lines (11 tests)
+  - `test_special_characters.rb`: ~192 lines (22 tests)
 - Docs: ~600+ lines total
 
 ## Dependencies
