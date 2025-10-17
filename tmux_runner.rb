@@ -9,22 +9,30 @@ DEBUG = ENV["TMUX_RUNNER_DEBUG"] == "1"
 # --- Helper Function for running tmux commands ---
 # This wrapper executes a tmux command, checks for errors, and exits if it fails.
 def run_tmux_command(command, socket_path = nil)
-  # Execute the command with the specified socket (or default tmux), redirecting stderr to stdout to capture any errors.
-  socket_arg = socket_path ? "-S #{socket_path}" : ""
-  output = `tmux #{socket_arg} #{command} 2>&1`
+  # Build the command array to avoid shell interpretation
+  cmd_array = ["tmux"]
+  cmd_array += ["-S", socket_path] if socket_path
+  # Split the command string into arguments, but preserve quoted strings
+  cmd_array += Shellwords.split(command)
+
+  # Execute using system() with array form to avoid shell expansion
+  output = IO.popen(cmd_array, err: [:child, :out]) { |io| io.read }
   status = $?.exitstatus
 
   # If the command failed (non-zero exit status), print the error and exit.
   unless status.zero?
     warn "--- TMUX COMMAND FAILED ---"
-    warn "COMMAND: tmux #{socket_arg} #{command}"
+    warn "COMMAND: #{cmd_array.join(" ")}"
     warn "EXIT CODE: #{status}"
     warn "OUTPUT:\n#{output}"
     warn "---------------------------"
     # Try to clean up the window if it was created before a later command failed.
     if command.include?("-t")
       window_name = command.split("-t").last.strip.split.first
-      `tmux #{socket_arg} kill-window -t #{window_name}`
+      cleanup_cmd = ["tmux"]
+      cleanup_cmd += ["-S", socket_path] if socket_path
+      cleanup_cmd += ["kill-window", "-t", window_name]
+      system(*cleanup_cmd, out: File::NULL, err: File::NULL)
     end
     exit 1
   end
@@ -35,8 +43,13 @@ end
 
 # Non-failing version for commands that might legitimately fail
 def try_tmux_command(command, socket_path = nil)
-  socket_arg = socket_path ? "-S #{socket_path}" : ""
-  output = `tmux #{socket_arg} #{command} 2>&1`
+  # Build the command array to avoid shell interpretation
+  cmd_array = ["tmux"]
+  cmd_array += ["-S", socket_path] if socket_path
+  cmd_array += Shellwords.split(command)
+
+  # Execute using IO.popen with array form to avoid shell expansion
+  output = IO.popen(cmd_array, err: [:child, :out]) { |io| io.read }
   return nil unless $?.success?
 
   output
@@ -129,8 +142,10 @@ if socket_path && !(File.exist?(socket_path) && File.writable?(socket_path))
 end
 
 # Get the current session name or use the first available session
-socket_arg = socket_path ? "-S #{socket_path}" : ""
-session_list = `tmux #{socket_arg} list-sessions 2>&1`
+cmd_array = ["tmux"]
+cmd_array += ["-S", socket_path] if socket_path
+cmd_array += ["list-sessions"]
+session_list = IO.popen(cmd_array, err: [:child, :out]) { |io| io.read }
 unless $?.success?
   socket_msg = socket_path ? "on socket #{socket_path}" : "using default tmux session"
   warn "Error: Cannot list tmux sessions #{socket_msg}"
@@ -149,14 +164,28 @@ end
 # Optional: Set TMUX_WINDOW_PREFIX environment variable to customize window name
 window_prefix = ENV["TMUX_WINDOW_PREFIX"] || "tmux_runner"
 
-command_to_run = ARGV.join(" ")
-if command_to_run.empty?
+# Handle command arguments
+# If multiple arguments are provided, they should be shell-quoted and joined
+# This preserves arguments with spaces and special characters
+if ARGV.empty?
   warn "Usage: #{$0} <command to run in new window>"
   warn "Example: #{$0} 'ls -l && echo Done.'"
   warn "\nOptional: Set TMUX_WINDOW_PREFIX env var to customize window name"
   warn "Example: TMUX_WINDOW_PREFIX=myapp #{$0} 'command'"
   exit 1
 end
+
+# If there's only one argument, use it as-is (it's already a complete command)
+# If there are multiple arguments, shell-quote each one and join with spaces
+# This allows both forms:
+#   ./tmux_runner.rb 'complete command string'
+#   ./tmux_runner.rb command arg1 arg2 ...
+command_to_run = if ARGV.length == 1
+                   ARGV[0]
+                 else
+                   # Quote each argument to preserve it through shell execution
+                   ARGV.map { |arg| Shellwords.escape(arg) }.join(" ")
+                 end
 
 # --- 3. Create a New Tmux Window ---
 # Generate a unique name for the new window to avoid conflicts.
@@ -182,15 +211,19 @@ end_delimiter = "===END_#{unique_id}==="
 # Don't exit at the end - let the window stay open so we can capture output
 # Run command directly without subshell to avoid I/O issues with SSH and interactive programs
 tmux_wait_cmd = socket_path ? "tmux -S #{socket_path} wait-for -S #{channel_name}" : "tmux wait-for -S #{channel_name}"
-full_command = "echo '#{start_delimiter}'; \
-#{command_to_run} 2>&1; \
-EXIT_CODE=$?; \
-echo #{end_delimiter}$EXIT_CODE; \
-#{tmux_wait_cmd}"
 
-# Send the full command sequence to the new window.
-# Note: We need to escape the command for shell, but send-keys needs it quoted properly
-escaped_command = full_command.gsub("'", "'\\\\''") # Escape single quotes for shell
+# Build the wrapper - we need to preserve the user's command exactly as they provided it
+# The simplest approach: just embed the command directly, but wrap it in a subshell
+# to capture both stdout and stderr, and get the exit code
+# Replace any single quotes in the command with the sequence '\'' (end quote, escaped quote, start quote)
+safe_command = command_to_run.gsub("'", "'\"'\"'")
+full_command = "echo '#{start_delimiter}'; { #{command_to_run}; } 2>&1; EXIT_CODE=$?; echo #{end_delimiter}$EXIT_CODE; #{tmux_wait_cmd}"
+
+# Send the full command sequence to the new window
+# Escape single quotes for tmux's send-keys parser by replacing ' with '\''
+# But we need to be careful: tmux send-keys wants the whole thing in single quotes
+# So we'll use the '\'' escape sequence
+escaped_command = full_command.gsub("'", "'\\\\''")
 run_tmux_command("send-keys -t #{window_target} '#{escaped_command}' C-m", socket_path)
 
 # Now, wait for the command to complete before capturing output

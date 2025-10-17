@@ -94,9 +94,27 @@ session_check = `tmux -S #{socket_path} list-sessions 2>&1`
 unless $?.success?
   puts "Creating tmux session on socket #{socket_path}..."
   system("tmux -S #{socket_path} new-session -d -s test_session")
+  sleep 0.5 # Give tmux time to start the session
   session_check = `tmux -S #{socket_path} list-sessions 2>&1`
   unless $?.success?
     puts "ERROR: Failed to create tmux session"
+    puts "Output: #{session_check}"
+    exit 1
+  end
+end
+
+# Verify we have at least one session
+session_name = session_check.split("\n").first&.split(':')&.first
+if session_name.nil? || session_name.empty?
+  puts "ERROR: No tmux sessions found on socket #{socket_path}"
+  puts "Creating new session..."
+  system("tmux -S #{socket_path} new-session -d -s test_session")
+  sleep 0.5
+  session_check = `tmux -S #{socket_path} list-sessions 2>&1`
+  session_name = session_check.split("\n").first&.split(':')&.first
+
+  if session_name.nil? || session_name.empty?
+    puts "ERROR: Failed to create or find tmux session"
     exit 1
   end
 end
@@ -104,8 +122,32 @@ end
 puts "Prerequisites OK:"
 puts "  - Running inside tmux: YES"
 puts "  - Tmux socket: #{socket_path}"
-puts "  - Session on socket: #{session_check.split("\n").first.split(':').first}"
+puts "  - Session on socket: #{session_name}"
+puts
+
+# Clean up any leftover tmux_runner windows from previous test runs
+puts "Cleaning up leftover test windows..."
+windows = `tmux -S #{socket_path} list-windows -F '\#{window_name}' 2>/dev/null`.split("\n")
+cleaned_count = 0
+windows.each do |window_name|
+  if window_name.start_with?('tmux_runner_')
+    system("tmux -S #{socket_path} kill-window -t '=#{window_name}' 2>/dev/null")
+    cleaned_count += 1
+  end
+end
+puts "  - Cleaned up #{cleaned_count} leftover window(s)"
 puts
 
 # Run the tests
+puts "Loading test suites..."
+puts "  - Core tmux runner tests"
 require_relative 'test_tmux_runner'
+puts "  - Basic variable expansion tests"
+require_relative 'test_variable_expansion_basic'
+puts "  - Advanced variable expansion tests"
+require_relative 'test_variable_expansion_advanced'
+puts "  - Edge case variable expansion tests"
+require_relative 'test_variable_expansion_edge_cases'
+puts "  - Special character tests"
+require_relative 'test_special_characters'
+puts
