@@ -16,7 +16,7 @@ def run_tmux_command(command, socket_path = nil)
   cmd_array += Shellwords.split(command)
 
   # Execute using system() with array form to avoid shell expansion
-  output = IO.popen(cmd_array, err: [:child, :out]) { |io| io.read }
+  output = IO.popen(cmd_array, err: %i[child out], &:read)
   status = $?.exitstatus
 
   # If the command failed (non-zero exit status), print the error and exit.
@@ -49,7 +49,7 @@ def try_tmux_command(command, socket_path = nil)
   cmd_array += Shellwords.split(command)
 
   # Execute using IO.popen with array form to avoid shell expansion
-  output = IO.popen(cmd_array, err: [:child, :out]) { |io| io.read }
+  output = IO.popen(cmd_array, err: %i[child out], &:read)
   return nil unless $?.success?
 
   output
@@ -145,7 +145,7 @@ end
 cmd_array = ["tmux"]
 cmd_array += ["-S", socket_path] if socket_path
 cmd_array += ["list-sessions"]
-session_list = IO.popen(cmd_array, err: [:child, :out]) { |io| io.read }
+session_list = IO.popen(cmd_array, err: %i[child out], &:read)
 unless $?.success?
   socket_msg = socket_path ? "on socket #{socket_path}" : "using default tmux session"
   warn "Error: Cannot list tmux sessions #{socket_msg}"
@@ -216,8 +216,10 @@ tmux_wait_cmd = socket_path ? "tmux -S #{socket_path} wait-for -S #{channel_name
 # The simplest approach: just embed the command directly, but wrap it in a subshell
 # to capture both stdout and stderr, and get the exit code
 # Replace any single quotes in the command with the sequence '\'' (end quote, escaped quote, start quote)
-safe_command = command_to_run.gsub("'", "'\"'\"'")
+command_to_run.gsub("'", "'\"'\"'")
+# rubocop:disable Layout/LineLength
 full_command = "echo '#{start_delimiter}'; { #{command_to_run}; } 2>&1; EXIT_CODE=$?; echo #{end_delimiter}$EXIT_CODE; #{tmux_wait_cmd}"
+# rubocop:enable Layout/LineLength
 
 # Send the full command sequence to the new window
 # Escape single quotes for tmux's send-keys parser by replacing ' with '\''
