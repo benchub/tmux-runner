@@ -111,6 +111,10 @@ if result[:success]
   puts "Exit code: #{result[:exit_code]}"
 end
 
+# Array arguments (avoids complex quoting for arguments with spaces)
+result = runner.run("ls", "-l", "file with spaces.txt")
+result = runner.run("grep", "pattern", "/path/to/file with spaces.txt")
+
 # Run and raise on failure
 begin
   output = runner.run!("hostname")
@@ -142,9 +146,36 @@ Creates a new runner instance.
 - `socket_path` - Path to tmux socket (default: `'/tmp/shared-session'`). Pass `nil` to use the current tmux session without a socket.
 - `script_path` - Path to the standalone script (default: auto-detects `tmux_runner.rb`). Can be overridden to use a custom script path.
 
+### Array Arguments
+
+All command execution methods (`run`, `run!`, `run_with_block`, `start`) support two forms:
+
+**String form** - Single command string with shell features:
+```ruby
+runner.run("echo 'a' | cat")  # Pipes work
+runner.run("echo $HOME")       # Variables expand
+```
+
+**Array form** - Command and arguments as separate strings (no shell processing):
+```ruby
+runner.run("echo", "a|b")           # Literal: a|b (not a pipe)
+runner.run("echo", "$HOME")         # Literal: $HOME (not expanded)
+runner.run("ls", "-l", "file.txt")  # No quoting needed for spaces
+```
+
+**Benefits of array form:**
+- No complex quoting for arguments with spaces
+- Shell metacharacters are literal (safe from injection)
+- Arguments with `$`, `|`, `&`, `;`, `>`, `` ` ``, quotes, etc. are treated as literal strings
+
+**When to use each:**
+- Use **string form** when you need shell features (pipes, redirection, variable expansion)
+- Use **array form** when you have literal arguments (especially with spaces or special characters)
+
 ### Blocking Methods
 
 #### `run(command, window_prefix: 'tmux_runner')` → Hash
+#### `run(*args, window_prefix: 'tmux_runner')` → Hash
 Runs a command and returns:
 - `:success` - Boolean, true if exit code was 0
 - `:output` - String, the command's stdout/stderr output
@@ -154,22 +185,50 @@ Runs a command and returns:
 
 Optional `window_prefix` parameter customizes the tmux window name (default: 'tmux_runner').
 
+**Examples:**
+```ruby
+result = runner.run("echo 'hello'")
+result = runner.run("ls", "-l", "file with spaces.txt")
+result = runner.run(["grep", "pattern", "file.txt"])
+```
+
 #### `run!(command, window_prefix: 'tmux_runner')` → String
+#### `run!(*args, window_prefix: 'tmux_runner')` → String
 Runs a command and returns just the output string. Raises an exception if the command fails.
 
 Optional `window_prefix` parameter customizes the tmux window name (default: 'tmux_runner').
 
+**Examples:**
+```ruby
+output = runner.run!("hostname")
+output = runner.run!("cat", "file with spaces.txt")
+```
+
 #### `run_with_block(command, window_prefix: 'tmux_runner') { |output, exit_code| ... }` → Hash
+#### `run_with_block(*args, window_prefix: 'tmux_runner') { |output, exit_code| ... }` → Hash
 Runs a command and yields the output and exit code to the block, then returns the result hash.
 
 Optional `window_prefix` parameter customizes the tmux window name (default: 'tmux_runner').
 
+**Examples:**
+```ruby
+runner.run_with_block("ls -l") { |output, code| puts output }
+runner.run_with_block("grep", "pattern", "file.txt") { |output, code| puts output }
+```
+
 ### Concurrent/Non-Blocking Methods
 
 #### `start(command, window_prefix: 'tmux_runner')` → String (job_id)
+#### `start(*args, window_prefix: 'tmux_runner')` → String (job_id)
 Starts a command asynchronously and immediately returns a job ID. The command runs in the background.
 
 Optional `window_prefix` parameter customizes the tmux window name (default: 'tmux_runner').
+
+**Examples:**
+```ruby
+job_id = runner.start("sleep 5")
+job_id = runner.start("grep", "pattern", "file with spaces.txt")
+```
 
 #### `finished?(job_id)` → Boolean
 Returns true if the job has completed (successfully or with error).
@@ -332,7 +391,7 @@ Window names will be: `{prefix}_{pid}_{timestamp}` (e.g., `web_12345_1234567890`
 
 ## Testing
 
-Comprehensive test suite with 58 test cases (210 assertions) covering all functionality:
+Comprehensive test suite with 87 test cases (271 assertions) covering all functionality:
 
 ```bash
 # Run all tests (automatically starts tmux if needed)
@@ -356,6 +415,7 @@ The test runner (`run_tests.rb`) will automatically:
 
 Test coverage includes:
 - **Basic Functionality**: Simple commands, error handling, exit codes, multiline output
+- **Array Arguments**: Space handling, special characters, shell metacharacters, backward compatibility (29 tests)
 - **Concurrent Execution**: Start/wait/cancel jobs, job status tracking, parallel execution
 - **Race Conditions**: Fast commands, slow commands, rapid sequential execution, mixed timing
 - **Edge Cases**: Delimiter detection, prompt detection, blank lines, line wrapping, no trailing newlines
@@ -366,6 +426,7 @@ All tests pass with 100% success rate.
 ## Examples
 
 - `example_usage.rb` - Basic command execution, error handling, blocks, long-running commands, progress bars, complex pipes and SSH
+- `example_array_args.rb` - Using array arguments to handle spaces and special characters without complex quoting
 - `example_concurrent.rb` - Running multiple commands concurrently, polling job status, waiting for specific or all jobs
 - `example_window_prefix.rb` - Using custom window prefixes for better organization
 - `example_practical.rb` - Real-world patterns: multi-server health checks, task queues with concurrency limits, timeout handling

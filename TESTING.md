@@ -1,6 +1,6 @@
 # TmuxRunner Test Suite
 
-Comprehensive test suite for the TmuxRunner library with 58 test cases and 210 assertions.
+Comprehensive test suite for the TmuxRunner library with 87 test cases and 271 assertions.
 
 ## Prerequisites
 
@@ -47,6 +47,37 @@ ruby test/test_tmux_runner.rb --name test_simple_command_success
 
 ### run_with_block (1 test)
 - ✅ `test_run_with_block` - Block callback
+
+### Array Arguments (29 tests)
+- ✅ `test_array_args_basic` - Basic array syntax
+- ✅ `test_array_args_with_spaces` - Arguments with spaces
+- ✅ `test_array_args_multiple_with_spaces` - Multiple space-containing args
+- ✅ `test_array_args_with_special_characters` - Shell variables literal
+- ✅ `test_array_args_with_quotes` - Quote handling
+- ✅ `test_array_args_with_newlines` - Newline handling
+- ✅ `test_array_args_ls_command` - Practical ls example
+- ✅ `test_array_args_grep_command` - Practical grep example
+- ✅ `test_array_args_command_not_found` - Error handling
+- ✅ `test_array_args_with_flags` - Command flags
+- ✅ `test_array_args_empty_string_argument` - Empty strings
+- ✅ `test_array_args_with_glob_patterns` - Glob literals
+- ✅ `test_array_args_start_method` - Async execution
+- ✅ `test_array_args_start_with_spaces` - Async with spaces
+- ✅ `test_array_args_run_bang` - run! with arrays
+- ✅ `test_array_args_run_bang_with_spaces` - run! with spaces
+- ✅ `test_array_args_run_bang_failure` - run! error handling
+- ✅ `test_array_args_run_with_block` - Block with arrays
+- ✅ `test_array_args_with_custom_window_prefix` - Custom prefix
+- ✅ `test_array_args_explicit_array` - Explicit array syntax
+- ✅ `test_array_args_backslash_escaping` - Backslash handling
+- ✅ `test_array_args_pipe_character_literal` - Pipe as literal
+- ✅ `test_array_args_ampersand_literal` - Ampersand as literal
+- ✅ `test_array_args_semicolon_literal` - Semicolon as literal
+- ✅ `test_array_args_redirect_character_literal` - Redirect as literal
+- ✅ `test_array_args_parenthesis_literal` - Parenthesis as literal
+- ✅ `test_array_args_backtick_literal` - Backtick as literal
+- ✅ `test_backward_compat_string_still_allows_shell_features` - Backward compatibility
+- ✅ `test_array_vs_string_behavior_difference` - String vs array comparison
 
 ### Concurrent Execution (11 tests)
 - ✅ `test_start_returns_job_id` - Job ID generation
@@ -139,12 +170,12 @@ Test naming convention: `test_<category>_<specific_behavior>`
 
 ## Test Results
 
-**✅ All 41 tests pass successfully!**
+**✅ All 87 tests pass successfully!**
 
-- 41 tests
-- 90 assertions
+- 87 tests
+- 271 assertions
 - 0 failures
-- Test run time: ~25 seconds
+- Test run time: ~70 seconds
 
 ## Known Issues
 

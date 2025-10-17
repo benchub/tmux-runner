@@ -34,8 +34,27 @@ class TmuxRunner
   end
 
   # Run a command and return a result hash (blocking)
+  #
+  # Can be called with either:
+  # - A single string: run("ls -l")
+  # - Multiple arguments: run("ls", "-l", "file with spaces.txt")
+  #
+  # The array form avoids complex quoting issues when arguments contain spaces.
+  #
   # Returns: { success: true/false, output: "...", exit_code: 0, error: nil }
-  def run(command, window_prefix: "tmux_runner")
+  def run(*args, window_prefix: "tmux_runner")
+    # Handle both string and array forms
+    command = if args.length == 1 && args[0].is_a?(String)
+                # Single string argument - use as-is (backward compatibility)
+                args[0]
+              elsif args.length > 1 || (args.length == 1 && args[0].is_a?(Array))
+                # Multiple arguments or single array argument - join with proper escaping
+                cmd_array = args[0].is_a?(Array) ? args[0] : args
+                Shellwords.join(cmd_array)
+              else
+                raise ArgumentError, "Invalid arguments: expected string or array of strings"
+              end
+
     # Run the standalone script and capture output
     env_vars = "TMUX_WINDOW_PREFIX=#{Shellwords.escape(window_prefix)}"
     # Only set TMUX_SOCKET_PATH if socket_path is non-nil
@@ -60,12 +79,17 @@ class TmuxRunner
   end
 
   # Start a command asynchronously and return a job handle
+  #
+  # Can be called with either:
+  # - A single string: start("ls -l")
+  # - Multiple arguments: start("ls", "-l", "file with spaces.txt")
+  #
   # Returns: job_id (String)
-  def start(command, window_prefix: "tmux_runner")
+  def start(*args, window_prefix: "tmux_runner")
     job_id = generate_job_id
 
     thread = Thread.new do
-      result = run(command, window_prefix: window_prefix)
+      result = run(*args, window_prefix: window_prefix)
       @jobs_mutex.synchronize do
         @jobs[job_id][:result] = result
         @jobs[job_id][:status] = :completed
@@ -85,7 +109,7 @@ class TmuxRunner
 
     @jobs_mutex.synchronize do
       @jobs[job_id] = {
-        command: command,
+        command: args.inspect,
         window_prefix: window_prefix,
         thread: thread,
         status: :running,
@@ -205,16 +229,24 @@ class TmuxRunner
 
   # Run a command and return just the output string
   # Raises an exception if the command fails
-  def run!(command, window_prefix: "tmux_runner")
-    result = run(command, window_prefix: window_prefix)
+  #
+  # Can be called with either:
+  # - A single string: run!("ls -l")
+  # - Multiple arguments: run!("ls", "-l", "file with spaces.txt")
+  def run!(*args, window_prefix: "tmux_runner")
+    result = run(*args, window_prefix: window_prefix)
     raise "Command failed with exit code #{result[:exit_code]}: #{result[:output]}" unless result[:success]
 
     result[:output]
   end
 
   # Run a command and yield output and exit code to a block
-  def run_with_block(command, window_prefix: "tmux_runner")
-    result = run(command, window_prefix: window_prefix)
+  #
+  # Can be called with either:
+  # - A single string: run_with_block("ls -l") { |output, code| ... }
+  # - Multiple arguments: run_with_block("ls", "-l") { |output, code| ... }
+  def run_with_block(*args, window_prefix: "tmux_runner")
+    result = run(*args, window_prefix: window_prefix)
     yield(result[:output], result[:exit_code])
     result
   end

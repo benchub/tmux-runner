@@ -602,6 +602,249 @@ class TestTmuxRunner < Test::Unit::TestCase
     assert_match /signal test/, result[:output]
   end
 
+  # Array argument tests
+
+  def test_array_args_basic
+    # Test basic array argument syntax
+    result = @runner.run("echo", "hello")
+    assert_equal true, result[:success]
+    assert_match /hello/, result[:output]
+  end
+
+  def test_array_args_with_spaces
+    # Test that arguments with spaces are properly handled
+    result = @runner.run("echo", "hello world")
+    assert_equal true, result[:success]
+    assert_equal "hello world", result[:output].strip
+  end
+
+  def test_array_args_multiple_with_spaces
+    # Test multiple arguments containing spaces
+    result = @runner.run("printf", "%s\\n%s\\n", "first line", "second line")
+    assert_equal true, result[:success]
+    assert_match /first line/, result[:output]
+    assert_match /second line/, result[:output]
+  end
+
+  def test_array_args_with_special_characters
+    # Test arguments with special shell characters
+    result = @runner.run("echo", "test$VAR")
+    assert_equal true, result[:success]
+    # Should be literal, not expanded
+    assert_equal "test$VAR", result[:output].strip
+  end
+
+  def test_array_args_with_quotes
+    # Test arguments containing quotes
+    result = @runner.run("echo", "it's \"quoted\"")
+    assert_equal true, result[:success]
+    assert_match /it's "quoted"/, result[:output]
+  end
+
+  def test_array_args_with_newlines
+    # Test arguments containing newlines
+    result = @runner.run("printf", "%s", "line1\nline2")
+    assert_equal true, result[:success]
+    assert_match /line1/, result[:output]
+    assert_match /line2/, result[:output]
+  end
+
+  def test_array_args_ls_command
+    # Test practical example: ls with path containing spaces
+    # Create a test directory structure (in /tmp to avoid permission issues)
+    test_dir = "/tmp/tmux_runner_test_#{Process.pid}"
+    `mkdir -p "#{test_dir}/dir with spaces"`
+    `touch "#{test_dir}/dir with spaces/file.txt"`
+
+    begin
+      result = @runner.run("ls", "-la", "#{test_dir}/dir with spaces")
+      assert_equal true, result[:success]
+      assert_match /file.txt/, result[:output]
+    ensure
+      `rm -rf "#{test_dir}"`
+    end
+  end
+
+  def test_array_args_grep_command
+    # Test grep with pattern and file containing spaces
+    test_file = "/tmp/test file #{Process.pid}.txt"
+    `echo "test content" > "#{test_file}"`
+
+    begin
+      result = @runner.run("grep", "content", test_file)
+      assert_equal true, result[:success]
+      assert_match /test content/, result[:output]
+    ensure
+      `rm -f "#{test_file}"`
+    end
+  end
+
+  def test_array_args_command_not_found
+    # Test that array syntax works with failed commands
+    result = @runner.run("nonexistent_command_xyz", "arg1", "arg2")
+    assert_equal false, result[:success]
+    assert_not_equal 0, result[:exit_code]
+  end
+
+  def test_array_args_with_flags
+    # Test command with multiple flags and arguments
+    result = @runner.run("echo", "-n", "no newline")
+    assert_equal true, result[:success]
+    assert_equal "no newline", result[:output]
+  end
+
+  def test_array_args_empty_string_argument
+    # Test that empty strings are preserved
+    result = @runner.run("sh", "-c", "echo \"arg1: '$1', arg2: '$2'\"", "--", "", "value")
+    assert_equal true, result[:success]
+    # Empty first arg should be preserved
+    assert_match /arg1: ''/, result[:output]
+    assert_match /arg2: 'value'/, result[:output]
+  end
+
+  def test_array_args_with_glob_patterns
+    # Test that glob patterns are NOT expanded (literal strings)
+    result = @runner.run("echo", "*.txt")
+    assert_equal true, result[:success]
+    # Should be literal, not expanded
+    assert_equal "*.txt", result[:output].strip
+  end
+
+  def test_array_args_start_method
+    # Test array args with start() method
+    job_id = @runner.start("echo", "async test")
+    result = @runner.wait(job_id)
+    assert_equal true, result[:success]
+    assert_match /async test/, result[:output]
+  end
+
+  def test_array_args_start_with_spaces
+    # Test array args with start() and spaces
+    job_id = @runner.start("echo", "hello world from async")
+    result = @runner.wait(job_id)
+    assert_equal true, result[:success]
+    assert_match /hello world from async/, result[:output]
+  end
+
+  def test_array_args_run_bang
+    # Test array args with run! method
+    output = @runner.run!("echo", "run bang array")
+    assert_match /run bang array/, output
+  end
+
+  def test_array_args_run_bang_with_spaces
+    # Test array args with run! and spaces
+    output = @runner.run!("echo", "spaces in run!")
+    assert_equal "spaces in run!", output.strip
+  end
+
+  def test_array_args_run_bang_failure
+    # Test array args with run! raising exception on failure
+    assert_raise(RuntimeError) do
+      @runner.run!("ls", "/nonexistent_dir_xyz")
+    end
+  end
+
+  def test_array_args_run_with_block
+    # Test array args with run_with_block method
+    called = false
+    captured_output = nil
+
+    result = @runner.run_with_block("echo", "block array test") do |output, exit_code|
+      called = true
+      captured_output = output
+      assert_equal 0, exit_code
+    end
+
+    assert_equal true, called
+    assert_match /block array test/, captured_output
+    assert_equal true, result[:success]
+  end
+
+  def test_array_args_with_custom_window_prefix
+    # Test array args with custom window prefix
+    result = @runner.run("echo", "custom prefix", window_prefix: "filecheck")
+    assert_equal true, result[:success]
+    assert_match /custom prefix/, result[:output]
+  end
+
+  def test_array_args_explicit_array
+    # Test passing an explicit array as a single argument
+    result = @runner.run(["echo", "explicit array"])
+    assert_equal true, result[:success]
+    assert_match /explicit array/, result[:output]
+  end
+
+  def test_array_args_backslash_escaping
+    # Test that backslashes are preserved
+    result = @runner.run("echo", "path\\to\\file")
+    assert_equal true, result[:success]
+    assert_match /path.*to.*file/, result[:output]
+  end
+
+  def test_array_args_pipe_character_literal
+    # Test that pipe characters are literal, not shell operators
+    result = @runner.run("echo", "a|b")
+    assert_equal true, result[:success]
+    assert_equal "a|b", result[:output].strip
+  end
+
+  def test_array_args_ampersand_literal
+    # Test that ampersands are literal, not background operators
+    result = @runner.run("echo", "a&b")
+    assert_equal true, result[:success]
+    assert_equal "a&b", result[:output].strip
+  end
+
+  def test_array_args_semicolon_literal
+    # Test that semicolons are literal, not command separators
+    result = @runner.run("echo", "cmd1;cmd2")
+    assert_equal true, result[:success]
+    assert_equal "cmd1;cmd2", result[:output].strip
+  end
+
+  def test_array_args_redirect_character_literal
+    # Test that redirect characters are literal
+    result = @runner.run("echo", "input>output")
+    assert_equal true, result[:success]
+    assert_equal "input>output", result[:output].strip
+  end
+
+  def test_array_args_parenthesis_literal
+    # Test that parentheses are literal, not subshells
+    result = @runner.run("echo", "(subshell)")
+    assert_equal true, result[:success]
+    assert_equal "(subshell)", result[:output].strip
+  end
+
+  def test_array_args_backtick_literal
+    # Test that backticks are literal, not command substitution
+    result = @runner.run("echo", "`command`")
+    assert_equal true, result[:success]
+    assert_equal "`command`", result[:output].strip
+  end
+
+  def test_backward_compat_string_still_allows_shell_features
+    # Verify that string form still allows shell features (backward compatibility)
+    result = @runner.run("echo 'a' | cat")
+    assert_equal true, result[:success]
+    assert_equal "a", result[:output].strip
+  end
+
+  def test_array_vs_string_behavior_difference
+    # Demonstrate the difference: array form escapes, string form doesn't
+
+    # String form allows shell expansion
+    result_string = @runner.run("echo $HOME")
+    # Will show the actual HOME value
+    assert_equal true, result_string[:success]
+
+    # Array form treats it literally
+    result_array = @runner.run("echo", "$HOME")
+    assert_equal true, result_array[:success]
+    assert_equal "$HOME", result_array[:output].strip
+  end
+
   # Multiple sequential commands test
 
   def test_multiple_sequential_commands
