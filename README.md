@@ -82,6 +82,12 @@ TMUX_SOCKET_PATH=/tmp/my-socket ruby tmux_runner.rb "echo 'Custom socket'"
 # Use the current tmux session (no socket)
 TMUX_SOCKET_PATH='' ruby tmux_runner.rb "echo 'Default session'"
 
+# Set custom timeout (in seconds)
+TMUX_COMMAND_TIMEOUT=1800 ruby tmux_runner.rb "long_running_command"  # 30 minutes
+
+# No timeout (wait forever)
+TMUX_COMMAND_TIMEOUT=0 ruby tmux_runner.rb "very_long_command"
+
 # Command with errors
 ruby tmux_runner.rb "ls /nonexistent"
 
@@ -179,8 +185,8 @@ runner.run("ls", "-l", "file.txt")  # No quoting needed for spaces
 
 ### Blocking Methods
 
-#### `run(command, window_prefix: 'tmux_runner')` → Hash
-#### `run(*args, window_prefix: 'tmux_runner')` → Hash
+#### `run(command, window_prefix: 'tmux_runner', timeout: 600)` → Hash
+#### `run(*args, window_prefix: 'tmux_runner', timeout: 600)` → Hash
 Runs a command and returns:
 - `:success` - Boolean, true if exit code was 0
 - `:output` - String, the command's stdout/stderr output
@@ -188,51 +194,71 @@ Runs a command and returns:
 - `:error` - String or nil, error message if any
 - `:full_output` - String, complete output including headers
 
-Optional `window_prefix` parameter customizes the tmux window name (default: 'tmux_runner').
+**Optional Parameters:**
+- `window_prefix` - Customizes the tmux window name (default: `'tmux_runner'`)
+- `timeout` - Command timeout in seconds (default: `600` = 10 minutes)
+  - Set to `0` for infinite timeout (waits until command completes, no matter how long)
 
 **Examples:**
 ```ruby
 result = runner.run("echo 'hello'")
 result = runner.run("ls", "-l", "file with spaces.txt")
 result = runner.run(["grep", "pattern", "file.txt"])
+
+# Long-running command with custom timeout
+result = runner.run("long_process", timeout: 1800)  # 30 minutes
+
+# No timeout at all
+result = runner.run("very_long_process", timeout: 0)  # Wait forever
 ```
 
-#### `run!(command, window_prefix: 'tmux_runner')` → String
-#### `run!(*args, window_prefix: 'tmux_runner')` → String
+#### `run!(command, window_prefix: 'tmux_runner', timeout: 600)` → String
+#### `run!(*args, window_prefix: 'tmux_runner', timeout: 600)` → String
 Runs a command and returns just the output string. Raises an exception if the command fails.
 
-Optional `window_prefix` parameter customizes the tmux window name (default: 'tmux_runner').
+**Optional Parameters:**
+- `window_prefix` - Customizes the tmux window name (default: `'tmux_runner'`)
+- `timeout` - Command timeout in seconds (default: `600` = 10 minutes, or `0` for infinite)
 
 **Examples:**
 ```ruby
 output = runner.run!("hostname")
 output = runner.run!("cat", "file with spaces.txt")
+output = runner.run!("long_task", timeout: 0)  # No timeout
 ```
 
-#### `run_with_block(command, window_prefix: 'tmux_runner') { |output, exit_code| ... }` → Hash
-#### `run_with_block(*args, window_prefix: 'tmux_runner') { |output, exit_code| ... }` → Hash
+#### `run_with_block(command, window_prefix: 'tmux_runner', timeout: 600) { |output, exit_code| ... }` → Hash
+#### `run_with_block(*args, window_prefix: 'tmux_runner', timeout: 600) { |output, exit_code| ... }` → Hash
 Runs a command and yields the output and exit code to the block, then returns the result hash.
 
-Optional `window_prefix` parameter customizes the tmux window name (default: 'tmux_runner').
+**Optional Parameters:**
+- `window_prefix` - Customizes the tmux window name (default: `'tmux_runner'`)
+- `timeout` - Command timeout in seconds (default: `600` = 10 minutes, or `0` for infinite)
 
 **Examples:**
 ```ruby
 runner.run_with_block("ls -l") { |output, code| puts output }
 runner.run_with_block("grep", "pattern", "file.txt") { |output, code| puts output }
+runner.run_with_block("long_task", timeout: 0) { |output, code| puts output }
 ```
 
 ### Concurrent/Non-Blocking Methods
 
-#### `start(command, window_prefix: 'tmux_runner')` → String (job_id)
-#### `start(*args, window_prefix: 'tmux_runner')` → String (job_id)
+#### `start(command, window_prefix: 'tmux_runner', timeout: 600)` → String (job_id)
+#### `start(*args, window_prefix: 'tmux_runner', timeout: 600)` → String (job_id)
 Starts a command asynchronously and immediately returns a job ID. The command runs in the background.
 
-Optional `window_prefix` parameter customizes the tmux window name (default: 'tmux_runner').
+**Optional Parameters:**
+- `window_prefix` - Customizes the tmux window name (default: `'tmux_runner'`)
+- `timeout` - Command timeout in seconds (default: `600` = 10 minutes, or `0` for infinite)
 
 **Examples:**
 ```ruby
 job_id = runner.start("sleep 5")
 job_id = runner.start("grep", "pattern", "file with spaces.txt")
+
+# Long-running SSH job with no timeout
+ssh_job = runner.start("ssh remote 'long_process'", timeout: 0)
 ```
 
 #### `finished?(job_id)` → Boolean
@@ -257,7 +283,11 @@ Returns all job IDs (running and completed).
 Returns only the IDs of currently running jobs.
 
 #### `wait_all()` → Hash
-Blocks until all running jobs complete. Returns a hash of `job_id => result`.
+Blocks until all uncollected jobs complete. Returns a hash of `job_id => result`.
+
+**Important**: This method returns results for ALL jobs that have been started since the last call to `wait_all`, including jobs that may have already finished. This ensures no job results are lost even if a job completes quickly before `wait_all` is called.
+
+Calling `wait_all` a second time with no new jobs will return an empty hash (idempotent behavior).
 
 #### `cancel(job_id)` → Boolean
 Attempts to cancel a running job. Returns true if cancelled, false otherwise.
@@ -323,6 +353,35 @@ Debug output includes:
 - Buffer dumps when issues occur
 - Loop iteration counts
 - Line capture statistics
+
+## Environment Variables
+
+The following environment variables can be used to configure the standalone script:
+
+- **`TMUX_SOCKET_PATH`** - Path to tmux socket (default: `/tmp/shared-session`)
+  - Set to empty string `''` to use the current tmux session without a socket
+
+- **`TMUX_WINDOW_PREFIX`** - Prefix for tmux window names (default: `tmux_runner`)
+  - Useful for distinguishing windows from different scripts
+
+- **`TMUX_COMMAND_TIMEOUT`** - Command timeout in seconds (default: `600` = 10 minutes)
+  - Set to `0` for infinite timeout (waits until command completes)
+  - Prevents jobs from timing out when they take longer than expected
+
+- **`TMUX_RUNNER_DEBUG`** - Enable debug output (default: not set)
+  - Set to `1` to enable detailed debug information
+
+**Examples:**
+```bash
+# Custom socket with 30-minute timeout
+TMUX_SOCKET_PATH=/tmp/my-socket TMUX_COMMAND_TIMEOUT=1800 ruby tmux_runner.rb "command"
+
+# No timeout with custom window prefix
+TMUX_COMMAND_TIMEOUT=0 TMUX_WINDOW_PREFIX=deploy ruby tmux_runner.rb "deployment"
+
+# Debug mode with custom socket
+TMUX_RUNNER_DEBUG=1 TMUX_SOCKET_PATH=/tmp/debug ruby tmux_runner.rb "test"
+```
 
 ## Special Character Handling
 
