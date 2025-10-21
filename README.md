@@ -429,7 +429,9 @@ tmux -S /tmp/shared-session new-session -d -s my_session
 
 ### Commands hang or timeout
 - Check if the command requires interactive input
-- Ensure the command completes within 60 seconds
+- Commands timeout after 10 minutes (600 seconds) by default
+  - Use `timeout: 1800` for longer commands (e.g., 30 minutes)
+  - Use `timeout: 0` for no timeout (wait indefinitely)
 - Enable debug mode to see what's happening
 
 ## Concurrent Usage
