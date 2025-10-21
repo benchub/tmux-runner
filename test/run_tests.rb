@@ -142,12 +142,12 @@ puts
 puts "Loading test suites..."
 puts "  - Core tmux runner tests"
 require_relative 'test_tmux_runner'
-puts "  - Basic variable expansion tests"
-require_relative 'test_variable_expansion_basic'
-puts "  - Advanced variable expansion tests"
-require_relative 'test_variable_expansion_advanced'
-puts "  - Edge case variable expansion tests"
-require_relative 'test_variable_expansion_edge_cases'
+puts "  - Variable expansion tests (basic, advanced, edge cases)"
+require_relative 'test_variable_expansion'
 puts "  - Special character tests"
 require_relative 'test_special_characters'
+puts "  - wait_all tests"
+require_relative 'test_wait_all'
+puts "  - Timeout tests (configurable and infinite timeout)"
+require_relative 'test_timeout'
 puts

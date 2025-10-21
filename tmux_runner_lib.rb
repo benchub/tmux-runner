@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "shellwords"
+require "set"
 
 # TmuxRunner - Run commands in tmux windows and capture output
 # This is a library wrapper around the tmux_runner.rb standalone script
@@ -18,6 +19,7 @@ class TmuxRunner
     @last_output = nil
     @jobs = {}
     @jobs_mutex = Mutex.new
+    @collected_jobs = Set.new  # Track which jobs have been collected by wait_all
 
     # Auto-detect script path - use Ruby version
     if script_path
@@ -41,8 +43,13 @@ class TmuxRunner
   #
   # The array form avoids complex quoting issues when arguments contain spaces.
   #
+  # Options:
+  # - window_prefix: Custom prefix for the tmux window name (default: "tmux_runner")
+  # - timeout: Command timeout in seconds (default: 600 = 10 minutes)
+  #            Set to 0 for infinite timeout (waits until command completes, no matter how long)
+  #
   # Returns: { success: true/false, output: "...", exit_code: 0, error: nil }
-  def run(*args, window_prefix: "tmux_runner")
+  def run(*args, window_prefix: "tmux_runner", timeout: 600)
     # Handle both string and array forms
     command = if args.length == 1 && args[0].is_a?(String)
                 # Single string argument - use as-is (backward compatibility)
@@ -57,6 +64,7 @@ class TmuxRunner
 
     # Run the standalone script and capture output
     env_vars = "TMUX_WINDOW_PREFIX=#{Shellwords.escape(window_prefix)}"
+    env_vars += " TMUX_COMMAND_TIMEOUT=#{timeout}"
     # Only set TMUX_SOCKET_PATH if socket_path is non-nil
     # If nil, the script will use default tmux behavior (no -S flag)
     env_vars += if @socket_path
@@ -84,12 +92,17 @@ class TmuxRunner
   # - A single string: start("ls -l")
   # - Multiple arguments: start("ls", "-l", "file with spaces.txt")
   #
+  # Options:
+  # - window_prefix: Custom prefix for the tmux window name (default: "tmux_runner")
+  # - timeout: Command timeout in seconds (default: 600 = 10 minutes)
+  #            Set to 0 for infinite timeout (waits until command completes, no matter how long)
+  #
   # Returns: job_id (String)
-  def start(*args, window_prefix: "tmux_runner")
+  def start(*args, window_prefix: "tmux_runner", timeout: 600)
     job_id = generate_job_id
 
     thread = Thread.new do
-      result = run(*args, window_prefix: window_prefix)
+      result = run(*args, window_prefix: window_prefix, timeout: timeout)
       @jobs_mutex.synchronize do
         @jobs[job_id][:result] = result
         @jobs[job_id][:status] = :completed
@@ -194,14 +207,28 @@ class TmuxRunner
     end
   end
 
-  # Wait for all running jobs to complete
+  # Wait for all uncollected jobs to complete
   # Returns a hash of job_id => result
+  #
+  # This method waits for ALL jobs that have been started since the last call to wait_all,
+  # including jobs that may have already finished. This ensures no job results are lost
+  # even if a job completes quickly before wait_all is called.
   def wait_all
-    job_ids = running_jobs
+    # Get all jobs that haven't been collected yet
+    uncollected_job_ids = @jobs_mutex.synchronize do
+      @jobs.keys.reject { |job_id| @collected_jobs.include?(job_id) }
+    end
+
     results = {}
 
-    job_ids.each do |job_id|
+    # Wait for each uncollected job
+    uncollected_job_ids.each do |job_id|
       results[job_id] = wait(job_id)
+
+      # Mark this job as collected
+      @jobs_mutex.synchronize do
+        @collected_jobs.add(job_id)
+      end
     end
 
     results
@@ -233,8 +260,13 @@ class TmuxRunner
   # Can be called with either:
   # - A single string: run!("ls -l")
   # - Multiple arguments: run!("ls", "-l", "file with spaces.txt")
-  def run!(*args, window_prefix: "tmux_runner")
-    result = run(*args, window_prefix: window_prefix)
+  #
+  # Options:
+  # - window_prefix: Custom prefix for the tmux window name (default: "tmux_runner")
+  # - timeout: Command timeout in seconds (default: 600 = 10 minutes)
+  #            Set to 0 for infinite timeout (waits until command completes, no matter how long)
+  def run!(*args, window_prefix: "tmux_runner", timeout: 600)
+    result = run(*args, window_prefix: window_prefix, timeout: timeout)
     raise "Command failed with exit code #{result[:exit_code]}: #{result[:output]}" unless result[:success]
 
     result[:output]
@@ -245,8 +277,13 @@ class TmuxRunner
   # Can be called with either:
   # - A single string: run_with_block("ls -l") { |output, code| ... }
   # - Multiple arguments: run_with_block("ls", "-l") { |output, code| ... }
-  def run_with_block(*args, window_prefix: "tmux_runner")
-    result = run(*args, window_prefix: window_prefix)
+  #
+  # Options:
+  # - window_prefix: Custom prefix for the tmux window name (default: "tmux_runner")
+  # - timeout: Command timeout in seconds (default: 600 = 10 minutes)
+  #            Set to 0 for infinite timeout (waits until command completes, no matter how long)
+  def run_with_block(*args, window_prefix: "tmux_runner", timeout: 600)
+    result = run(*args, window_prefix: window_prefix, timeout: timeout)
     yield(result[:output], result[:exit_code])
     result
   end

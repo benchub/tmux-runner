@@ -162,7 +162,11 @@ end
 # --- 2. Get Command from Arguments ---
 # The command to be executed is passed as arguments to this script.
 # Optional: Set TMUX_WINDOW_PREFIX environment variable to customize window name
+# Optional: Set TMUX_COMMAND_TIMEOUT environment variable to set timeout in seconds
+#           - Default: 600 (10 minutes)
+#           - Set to 0 for infinite timeout (waits until tmux window closes)
 window_prefix = ENV["TMUX_WINDOW_PREFIX"] || "tmux_runner"
+command_timeout = (ENV["TMUX_COMMAND_TIMEOUT"] || "600").to_i
 
 # Handle command arguments
 # If multiple arguments are provided, they should be shell-quoted and joined
@@ -237,7 +241,9 @@ $stdout.flush # Ensure output is visible immediately
 sleep 0.2
 
 pane_content = ""
-max_retries = 600 # 60 seconds timeout
+# If timeout is 0, wait indefinitely (max_retries = nil means no limit)
+# Otherwise, calculate max_retries based on timeout (timeout * 10, since we sleep 0.1 each iteration)
+max_retries = command_timeout.zero? ? nil : command_timeout * 10
 retries = 0
 found_end_once = false
 
@@ -249,8 +255,9 @@ loop do
   # If capture failed, window might not be ready yet
   if pane_content.nil?
     retries += 1
-    if retries >= max_retries
-      warn "Error: Command timed out after 60 seconds"
+    # Only check timeout if max_retries is set (not infinite)
+    if max_retries && retries >= max_retries
+      warn "Error: Command timed out after #{command_timeout} seconds"
       break
     end
     sleep 0.1
@@ -284,8 +291,9 @@ loop do
   end
 
   retries += 1
-  if retries >= max_retries
-    warn "Error: Command timed out after 60 seconds"
+  # Only check timeout if max_retries is set (not infinite)
+  if max_retries && retries >= max_retries
+    warn "Error: Command timed out after #{command_timeout} seconds"
     break
   end
 
