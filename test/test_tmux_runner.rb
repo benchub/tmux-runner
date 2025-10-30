@@ -845,6 +845,88 @@ class TestTmuxRunner < Test::Unit::TestCase
     assert_equal "$HOME", result_array[:output].strip
   end
 
+  # Test for false positive prompt detection (GitHub issue fix)
+  # This test verifies that command output containing $, #, or > characters
+  # doesn't cause premature loop exit due to false positive prompt matches
+
+  def test_false_positive_prompt_with_enumerator_output
+    # Simulate Ruby command that outputs an Enumerator object ending with >
+    # This previously caused false positive matches with the shell prompt regex /[$#>]\s*$/
+    result = @runner.run("echo 'Progress: |===================================================Failed to restart 5 servers'; echo '#<Enumerator:0x0000e683d8644888>'")
+    assert_equal true, result[:success], "Command should complete successfully"
+    assert_equal 0, result[:exit_code], "Exit code should be 0"
+    assert_match /Enumerator/, result[:output], "Output should contain Enumerator line"
+    assert_match /Failed to restart/, result[:output], "Output should contain failure message"
+  end
+
+  def test_false_positive_prompt_with_hash_at_line_end
+    # Test output lines ending with # don't cause false prompt detection
+    result = @runner.run("echo 'Line ending with hash#'; echo 'another line'")
+    assert_equal true, result[:success]
+    assert_equal 0, result[:exit_code]
+    assert_match /hash#/, result[:output]
+    assert_match /another line/, result[:output]
+  end
+
+  def test_false_positive_prompt_with_dollar_at_line_end
+    # Test output lines ending with $ don't cause false prompt detection
+    result = @runner.run("echo 'Price: 100$'; echo 'next line'")
+    assert_equal true, result[:success]
+    assert_equal 0, result[:exit_code]
+    assert_match /100\$/, result[:output]
+    assert_match /next line/, result[:output]
+  end
+
+  def test_false_positive_prompt_with_greater_than_at_line_end
+    # Test output lines ending with > don't cause false prompt detection
+    result = @runner.run("echo 'Comparison: 5 > 3'; echo 'result'")
+    assert_equal true, result[:success]
+    assert_equal 0, result[:exit_code]
+    assert_match /5 > 3/, result[:output]
+    assert_match /result/, result[:output]
+  end
+
+  def test_false_positive_prompt_with_multiple_special_chars
+    # Test complex output with multiple lines containing prompt-like characters
+    result = @runner.run("echo 'Object#method>'; echo 'Price: $50'; echo 'root@host#'; echo 'done'")
+    assert_equal true, result[:success]
+    assert_equal 0, result[:exit_code]
+    assert_match /Object#method>/, result[:output]
+    assert_match /Price: \$50/, result[:output]
+    assert_match /root@host#/, result[:output]
+    assert_match /done/, result[:output]
+  end
+
+  def test_false_positive_prompt_with_ruby_object_inspection
+    # Test actual Ruby object inspection output that triggered the original bug
+    # Ruby's inspect method on various objects can produce output ending with >
+    result = @runner.run("ruby -e \"puts '#<Object:0x00007f8b1c8d3e80>'\"")
+    assert_equal true, result[:success]
+    assert_equal 0, result[:exit_code]
+    assert_match /Object:0x/, result[:output]
+  end
+
+  def test_real_prompt_still_detected_correctly
+    # Verify that actual shell prompts are still properly detected
+    # This ensures our fix doesn't break normal operation
+    result = @runner.run("sleep 0.5; echo 'command completed'")
+    assert_equal true, result[:success]
+    assert_equal 0, result[:exit_code]
+    assert_match /command completed/, result[:output]
+    # Window should close automatically (exit code 0), which proves prompt was detected
+  end
+
+  def test_false_positive_with_ssh_style_output
+    # Test output similar to the SSH command that triggered the original bug report
+    # The command outputs progress bars, Ruby objects, and ends with exit code 0
+    result = @runner.run("echo 'Progress: |=============================='; echo '#<Enumerator:0x000>'; echo 'Done'")
+    assert_equal true, result[:success]
+    assert_equal 0, result[:exit_code]
+    assert_match /Progress:/, result[:output]
+    assert_match /Enumerator/, result[:output]
+    assert_match /Done/, result[:output]
+  end
+
   # Multiple sequential commands test
 
   def test_multiple_sequential_commands

@@ -279,9 +279,17 @@ loop do
   # Additionally verify that the shell prompt has returned after the delimiter
   # This ensures the wait-for -S command has completed, avoiding race conditions
   if end_result
-    # Check if the last few lines contain a shell prompt ($ or # or > at end of line)
+    # Get all content after the end delimiter
+    content_after_end = pane_content[end_result[1]..]
+
+    # Look for a shell prompt that appears after the end delimiter
+    # Check the last few lines of the buffer (not just after delimiter) but verify
+    # that we have some content after the delimiter (wait-for has executed)
     last_lines = pane_content.split("\n").last(5).join("\n")
-    if /[$#>]\s*$/.match?(last_lines)
+
+    # Break if: we see a prompt in last 5 lines AND there's a newline after the delimiter
+    # The newline indicates the wait-for command completed and shell returned to prompt
+    if /[$#>]\s*$/.match?(last_lines) && content_after_end.include?("\n")
       warn "DEBUG: Shell prompt detected, command sequence complete" if DEBUG
       break
     elsif DEBUG && found_end_once == true
