@@ -264,8 +264,11 @@ loop do
     next
   end
 
-  # Look for the end delimiter to know when command is complete
+  # Look for BOTH start and end delimiters to know when command is complete
   # Handle tmux line wrapping by using flexible delimiter search
+  # We must find both delimiters to avoid false positives from the command echo
+  # (the delimiters appear in the echoed command line before the command executes)
+  start_result = find_delimiter_with_wrapping(pane_content, start_delimiter)
   # Don't require end delimiter to be on its own line (handles commands without trailing newline)
   end_result = find_delimiter_with_wrapping(pane_content, end_delimiter, require_own_line: false)
 
@@ -276,15 +279,13 @@ loop do
   end
 
   # Check if the command has finished
+  # We need: 1) both delimiters found, 2) start before end, 3) shell prompt visible
+  # This ensures we're seeing actual output, not just the command echo
   # Additionally verify that the shell prompt has returned after the delimiter
   # This ensures the wait-for -S command has completed, avoiding race conditions
-  if end_result
+  if start_result && end_result && start_result[0] < end_result[0]
     # Get all content after the end delimiter
     content_after_end = pane_content[end_result[1]..]
-
-    # Look for a shell prompt that appears after the end delimiter
-    # Check the last few lines of the buffer (not just after delimiter) but verify
-    # that we have some content after the delimiter (wait-for has executed)
     last_lines = pane_content.split("\n").last(5).join("\n")
 
     # Break if: we see a prompt in last 5 lines AND there's a newline after the delimiter
@@ -369,8 +370,11 @@ if start_result && end_result
 
     # The exit code immediately follows the end delimiter.
     status_part = pane_content[end_end_pos..]
+    # Strip ANSI escape codes that may be injected by SSH or other terminal commands
+    # ANSI codes follow patterns like \e[0m, \e[1;32m, \e[K, etc.
+    status_part_clean = status_part.gsub(/\e\[[0-9;]*[A-Za-z]/, "")
     # Extract just the number (first sequence of digits)
-    exit_code_match = status_part[/^\d+/]
+    exit_code_match = status_part_clean[/^\d+/]
     if exit_code_match
       exit_code = exit_code_match.to_i
     else

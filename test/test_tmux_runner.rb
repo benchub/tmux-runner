@@ -977,4 +977,98 @@ class TestTmuxRunner < Test::Unit::TestCase
     assert_equal 0, @runner.last_exit_code
     assert_match /final command/, @runner.last_output
   end
+
+  # ANSI escape code tests
+  # These tests verify that ANSI escape sequences in output don't interfere with exit code parsing
+  # NOTE: Use (exit N) instead of exit N to avoid killing the shell - the command wrapper uses { }
+  # which is a command group, not a subshell, so bare 'exit' would exit the entire shell.
+
+  def test_ansi_escape_codes_in_output_success
+    # Test that commands outputting ANSI codes still report correct exit code
+    # printf with \e[0m (reset) is a common ANSI sequence that SSH and remote terminals use
+    result = @runner.run("printf '\\e[32mgreen text\\e[0m\\n'; (exit 0)")
+    assert_equal true, result[:success], "Command with ANSI codes should succeed"
+    assert_equal 0, result[:exit_code], "Exit code should be 0"
+  end
+
+  def test_ansi_escape_codes_in_output_failure
+    # Test that commands with ANSI codes correctly report non-zero exit codes
+    result = @runner.run("printf '\\e[31merror\\e[0m\\n'; (exit 5)")
+    assert_equal false, result[:success], "Command should fail with exit code 5"
+    assert_equal 5, result[:exit_code], "Exit code should be 5"
+  end
+
+  def test_ansi_escape_codes_with_tput
+    # tput commands generate ANSI sequences
+    # This simulates what happens when SSH sessions have colored prompts
+    result = @runner.run("tput sgr0; echo 'after reset'; (exit 0)")
+    assert_equal true, result[:success], "Command with tput should succeed"
+    assert_equal 0, result[:exit_code], "Exit code should be 0"
+    assert_match /after reset/, result[:output]
+  end
+
+  def test_ansi_bold_and_color_sequences
+    # Multiple ANSI sequences in output
+    result = @runner.run("printf '\\e[1m\\e[34mBold Blue\\e[0m\\n'; (exit 3)")
+    assert_equal false, result[:success], "Command should fail with exit code 3"
+    assert_equal 3, result[:exit_code], "Exit code should be 3"
+  end
+
+  def test_ansi_clear_line_sequence
+    # \e[K clears to end of line - commonly used by progress bars
+    result = @runner.run("printf 'progress\\e[K'; echo 'done'; (exit 0)")
+    assert_equal true, result[:success], "Command with clear-line should succeed"
+    assert_equal 0, result[:exit_code], "Exit code should be 0"
+  end
+
+  def test_ansi_codes_from_remote_terminal
+    # Simulates SSH sessions where the remote terminal might inject ANSI codes
+    # into the output stream. This tests that exit codes are correctly parsed
+    # even when ANSI codes appear in the output.
+    result = @runner.run("printf '\\e[0m\\e[K'; echo 'SSH-style output'; (exit 0)")
+    assert_equal true, result[:success], "SSH-style command should succeed"
+    assert_equal 0, result[:exit_code], "Exit code should be 0"
+  end
+
+  def test_ansi_codes_with_failed_command
+    # Test ANSI codes with a non-zero exit code to ensure it's captured correctly
+    result = @runner.run("printf '\\e[31mError message\\e[0m\\n'; (exit 127)")
+    assert_equal false, result[:success], "Command should fail"
+    assert_equal 127, result[:exit_code], "Exit code should be 127"
+  end
+
+  # Tests for long commands that wrap in the terminal
+  # These test the fix for the bug where the polling loop could mistake
+  # the command echo (which contains the delimiter strings) for actual output
+
+  def test_long_command_with_many_arguments
+    # This command is long enough to wrap in a typical 80-column terminal
+    # The key is that the delimiters appear in the command echo before execution,
+    # but the script should wait for actual output, not the command echo
+    long_args = (1..20).map { |i| "arg#{i}=value#{i}" }.join(" ")
+    result = @runner.run("echo '#{long_args}'")
+    assert_equal true, result[:success], "Long command should succeed"
+    assert_equal 0, result[:exit_code], "Exit code should be 0"
+    assert_match /arg1=value1/, result[:output], "Output should contain arguments"
+    assert_match /arg20=value20/, result[:output], "Output should contain all arguments"
+  end
+
+  def test_long_command_with_sleep
+    # Long command with a small delay to ensure we're not capturing too early
+    # If the polling loop mistakes the command echo for output, this would fail
+    result = @runner.run("sleep 0.3; echo 'after delay'; (exit 0)")
+    assert_equal true, result[:success], "Command with delay should succeed"
+    assert_equal 0, result[:exit_code], "Exit code should be 0"
+    assert_match /after delay/, result[:output], "Should capture output after delay"
+  end
+
+  def test_very_long_command_string
+    # Test with a command that definitely wraps multiple times
+    # This simulates the SSH scenario the user encountered
+    vars = (1..10).map { |i| "VAR#{i}=\"long value with spaces #{i}\"" }.join("; ")
+    result = @runner.run("#{vars}; echo \"test complete\"")
+    assert_equal true, result[:success], "Very long command should succeed"
+    assert_equal 0, result[:exit_code], "Exit code should be 0"
+    assert_match /test complete/, result[:output], "Should capture the final echo"
+  end
 end
