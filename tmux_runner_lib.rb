@@ -19,7 +19,7 @@ class TmuxRunner
     @last_output = nil
     @jobs = {}
     @jobs_mutex = Mutex.new
-    @collected_jobs = Set.new  # Track which jobs have been collected by wait_all
+    @collected_jobs = Set.new # Track which jobs have been collected by wait_all
 
     # Auto-detect script path - use Ruby version
     if script_path
