@@ -47,9 +47,11 @@ class TmuxRunner
   # - window_prefix: Custom prefix for the tmux window name (default: "tmux_runner")
   # - timeout: Command timeout in seconds (default: 600 = 10 minutes)
   #            Set to 0 for infinite timeout (waits until command completes, no matter how long)
+  # - close_on_failure: When true, close the tmux window even if the command fails
+  #                     (default: false = leave failed windows open for inspection)
   #
   # Returns: { success: true/false, output: "...", exit_code: 0, error: nil }
-  def run(*args, window_prefix: "tmux_runner", timeout: 600)
+  def run(*args, window_prefix: "tmux_runner", timeout: 600, close_on_failure: false)
     # Handle both string and array forms
     command = if args.length == 1 && args[0].is_a?(String)
                 # Single string argument - use as-is (backward compatibility)
@@ -65,6 +67,7 @@ class TmuxRunner
     # Run the standalone script and capture output
     env_vars = "TMUX_WINDOW_PREFIX=#{Shellwords.escape(window_prefix)}"
     env_vars += " TMUX_COMMAND_TIMEOUT=#{timeout}"
+    env_vars += " TMUX_CLOSE_ON_FAILURE=1" if close_on_failure
     # Only set TMUX_SOCKET_PATH if socket_path is non-nil
     # If nil, the script will use default tmux behavior (no -S flag)
     env_vars += if @socket_path
@@ -96,13 +99,15 @@ class TmuxRunner
   # - window_prefix: Custom prefix for the tmux window name (default: "tmux_runner")
   # - timeout: Command timeout in seconds (default: 600 = 10 minutes)
   #            Set to 0 for infinite timeout (waits until command completes, no matter how long)
+  # - close_on_failure: When true, close the tmux window even if the command fails
+  #                     (default: false = leave failed windows open for inspection)
   #
   # Returns: job_id (String)
-  def start(*args, window_prefix: "tmux_runner", timeout: 600)
+  def start(*args, window_prefix: "tmux_runner", timeout: 600, close_on_failure: false)
     job_id = generate_job_id
 
     thread = Thread.new do
-      result = run(*args, window_prefix: window_prefix, timeout: timeout)
+      result = run(*args, window_prefix: window_prefix, timeout: timeout, close_on_failure: close_on_failure)
       @jobs_mutex.synchronize do
         @jobs[job_id][:result] = result
         @jobs[job_id][:status] = :completed
@@ -265,8 +270,8 @@ class TmuxRunner
   # - window_prefix: Custom prefix for the tmux window name (default: "tmux_runner")
   # - timeout: Command timeout in seconds (default: 600 = 10 minutes)
   #            Set to 0 for infinite timeout (waits until command completes, no matter how long)
-  def run!(*args, window_prefix: "tmux_runner", timeout: 600)
-    result = run(*args, window_prefix: window_prefix, timeout: timeout)
+  def run!(*args, window_prefix: "tmux_runner", timeout: 600, close_on_failure: false)
+    result = run(*args, window_prefix: window_prefix, timeout: timeout, close_on_failure: close_on_failure)
     raise "Command failed with exit code #{result[:exit_code]}: #{result[:output]}" unless result[:success]
 
     result[:output]
@@ -282,8 +287,8 @@ class TmuxRunner
   # - window_prefix: Custom prefix for the tmux window name (default: "tmux_runner")
   # - timeout: Command timeout in seconds (default: 600 = 10 minutes)
   #            Set to 0 for infinite timeout (waits until command completes, no matter how long)
-  def run_with_block(*args, window_prefix: "tmux_runner", timeout: 600)
-    result = run(*args, window_prefix: window_prefix, timeout: timeout)
+  def run_with_block(*args, window_prefix: "tmux_runner", timeout: 600, close_on_failure: false)
+    result = run(*args, window_prefix: window_prefix, timeout: timeout, close_on_failure: close_on_failure)
     yield(result[:output], result[:exit_code])
     result
   end

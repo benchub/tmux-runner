@@ -165,8 +165,11 @@ end
 # Optional: Set TMUX_COMMAND_TIMEOUT environment variable to set timeout in seconds
 #           - Default: 600 (10 minutes)
 #           - Set to 0 for infinite timeout (waits until tmux window closes)
+# Optional: Set TMUX_CLOSE_ON_FAILURE=1 to close the window even when the command fails
+#           - Default: 0 (leave failed windows open for inspection)
 window_prefix = ENV["TMUX_WINDOW_PREFIX"] || "tmux_runner"
 command_timeout = (ENV["TMUX_COMMAND_TIMEOUT"] || "600").to_i
+close_on_failure = ENV["TMUX_CLOSE_ON_FAILURE"] == "1"
 
 # Handle command arguments
 # If multiple arguments are provided, they should be shell-quoted and joined
@@ -418,8 +421,12 @@ puts "------------------------------------"
 
 # --- 7. Clean Up ---
 # If the command returned a success code (0), kill the temporary window.
+# If it failed, keep the window open for inspection unless TMUX_CLOSE_ON_FAILURE=1.
 if exit_code.zero?
   puts "Command succeeded. Closing window '#{window_target}'."
+  run_tmux_command("kill-window -t #{window_target}", socket_path)
+elsif close_on_failure
+  puts "Command failed. Closing window '#{window_target}' (TMUX_CLOSE_ON_FAILURE=1)."
   run_tmux_command("kill-window -t #{window_target}", socket_path)
 else
   puts "Command failed or script error occurred. Leaving window '#{window_target}' open for inspection."

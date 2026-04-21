@@ -198,6 +198,8 @@ Runs a command and returns:
 - `window_prefix` - Customizes the tmux window name (default: `'tmux_runner'`)
 - `timeout` - Command timeout in seconds (default: `600` = 10 minutes)
   - Set to `0` for infinite timeout (waits until command completes, no matter how long)
+- `close_on_failure` - Close the tmux window even if the command fails (default: `false`)
+  - By default, failed windows are left open for inspection
 
 **Examples:**
 ```ruby
@@ -210,6 +212,9 @@ result = runner.run("long_process", timeout: 1800)  # 30 minutes
 
 # No timeout at all
 result = runner.run("very_long_process", timeout: 0)  # Wait forever
+
+# Always close the window, even on failure
+result = runner.run("flaky_cmd", close_on_failure: true)
 ```
 
 #### `run!(command, window_prefix: 'tmux_runner', timeout: 600)` → String
@@ -367,6 +372,10 @@ The following environment variables can be used to configure the standalone scri
 - **`TMUX_COMMAND_TIMEOUT`** - Command timeout in seconds (default: `600` = 10 minutes)
   - Set to `0` for infinite timeout (waits until command completes)
   - Prevents jobs from timing out when they take longer than expected
+
+- **`TMUX_CLOSE_ON_FAILURE`** - Close the window even if the command fails (default: not set)
+  - Set to `1` to kill the window regardless of exit code
+  - By default, failed windows stay open so you can attach and inspect them
 
 - **`TMUX_RUNNER_DEBUG`** - Enable debug output (default: not set)
   - Set to `1` to enable detailed debug information

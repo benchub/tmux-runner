@@ -289,6 +289,87 @@ class TestTmuxRunner < Test::Unit::TestCase
     assert_equal true, result[:success]
   end
 
+  # close_on_failure tests
+
+  # Return list of tmux window names matching a prefix
+  def windows_with_prefix(prefix)
+    `tmux -S #{@socket_path} list-windows -F '\#{window_name}' 2>/dev/null`
+      .split("\n")
+      .select { |n| n.start_with?(prefix) }
+  end
+
+  def test_failure_default_leaves_window_open
+    # Default behavior: failed commands leave the window open for inspection
+    prefix = "testkeep_#{Process.pid}_#{rand(100_000)}"
+    result = @runner.run("(exit 1)", window_prefix: prefix)
+    assert_equal false, result[:success]
+    remaining = windows_with_prefix(prefix)
+    assert_equal 1, remaining.length,
+                 "Expected failed window to be left open, found: #{remaining.inspect}"
+  end
+
+  def test_failure_close_on_failure_true_closes_window
+    prefix = "testclose_#{Process.pid}_#{rand(100_000)}"
+    result = @runner.run("(exit 1)", window_prefix: prefix, close_on_failure: true)
+    assert_equal false, result[:success]
+    remaining = windows_with_prefix(prefix)
+    assert_equal 0, remaining.length,
+                 "Expected failed window to be closed, found: #{remaining.inspect}"
+  end
+
+  def test_failure_close_on_failure_false_leaves_window_open
+    # Explicit false should match the default behavior
+    prefix = "testkeep_#{Process.pid}_#{rand(100_000)}"
+    result = @runner.run("(exit 1)", window_prefix: prefix, close_on_failure: false)
+    assert_equal false, result[:success]
+    remaining = windows_with_prefix(prefix)
+    assert_equal 1, remaining.length,
+                 "Expected failed window to be left open, found: #{remaining.inspect}"
+  end
+
+  def test_success_close_on_failure_true_still_closes_window
+    # close_on_failure: true should not change behavior on success
+    prefix = "testclose_#{Process.pid}_#{rand(100_000)}"
+    result = @runner.run("echo hi", window_prefix: prefix, close_on_failure: true)
+    assert_equal true, result[:success]
+    remaining = windows_with_prefix(prefix)
+    assert_equal 0, remaining.length,
+                 "Expected successful window to be closed, found: #{remaining.inspect}"
+  end
+
+  def test_close_on_failure_run_bang
+    prefix = "testclose_#{Process.pid}_#{rand(100_000)}"
+    assert_raise(RuntimeError) do
+      @runner.run!("(exit 1)", window_prefix: prefix, close_on_failure: true)
+    end
+    remaining = windows_with_prefix(prefix)
+    assert_equal 0, remaining.length,
+                 "Expected failed window to be closed by run!, found: #{remaining.inspect}"
+  end
+
+  def test_close_on_failure_start
+    prefix = "testclose_#{Process.pid}_#{rand(100_000)}"
+    job_id = @runner.start("(exit 1)", window_prefix: prefix, close_on_failure: true)
+    result = @runner.wait(job_id)
+    assert_equal false, result[:success]
+    remaining = windows_with_prefix(prefix)
+    assert_equal 0, remaining.length,
+                 "Expected failed window to be closed by start, found: #{remaining.inspect}"
+  end
+
+  def test_close_on_failure_run_with_block
+    prefix = "testclose_#{Process.pid}_#{rand(100_000)}"
+    called = false
+    @runner.run_with_block("(exit 1)", window_prefix: prefix, close_on_failure: true) do |_out, code|
+      called = true
+      assert_equal 1, code
+    end
+    assert_equal true, called
+    remaining = windows_with_prefix(prefix)
+    assert_equal 0, remaining.length,
+                 "Expected failed window to be closed by run_with_block, found: #{remaining.inspect}"
+  end
+
   # Complex command tests
 
   def test_command_with_pipes
